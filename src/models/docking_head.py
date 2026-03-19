@@ -533,6 +533,15 @@ class DockingHead(nn.Module):
             )
         elif omega_mode == "neural_1e":
             self.omega_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1e"), layout=cue.mul_ir)
+        elif omega_mode == "neural_1e_separate":
+            # Dedicated omega branch: own pre-projection + activation + time conditioning
+            # Does NOT share h_head with translation, avoiding gradient interference
+            self.omega_head_pre = cuet.Linear(frag_irreps, head_irreps, layout=cue.mul_ir)
+            self.omega_head_act = ScalarActivation(head_irreps)
+            self.omega_head_ada = EquivariantAdaLN(head_irreps, t_emb_dim)
+            self.omega_head_proj = cuet.Linear(head_irreps, head_irreps, layout=cue.mul_ir)
+            self.omega_head_act2 = ScalarActivation(head_irreps)
+            self.omega_head_out = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1e"), layout=cue.mul_ir)
         elif omega_mode in ("newton_euler", "atom_velocity"):
             # Per-atom head: predict atom-level 1o vectors
             self.atom_head_pre = cuet.Linear(atom_irreps, atom_head_irreps, layout=cue.mul_ir)
@@ -784,6 +793,15 @@ class DockingHead(nn.Module):
 
         elif self.omega_mode == "neural_1e":
             omega_pred = self.omega_linear(h_head)
+
+        elif self.omega_mode == "neural_1e_separate":
+            # Dedicated omega branch from h_frag (not h_head)
+            h_omega = self.omega_head_pre(h_frag)
+            h_omega = self.omega_head_act(h_omega)
+            h_omega = self.omega_head_ada(h_omega, t_emb_frag)
+            h_omega = h_omega + self.omega_head_proj(h_omega)
+            h_omega = self.omega_head_act2(h_omega)
+            omega_pred = self.omega_head_out(h_omega)
 
         elif self.omega_mode == "newton_euler":
             # Predict per-atom forces → torque → inertia solve → omega
