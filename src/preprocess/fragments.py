@@ -70,6 +70,7 @@ def decompose_fragments(mol: Chem.Mol, atom_coords: torch.Tensor) -> dict | None
         "frag_local_coords": frag_local_coords,
         "frag_sizes": frag_sizes,
         "n_frags": n_frags,
+        "rot_bonds": rot_bonds,
         **tri_data,
     }
 
@@ -153,6 +154,106 @@ def _build_triangulation_edges(
         "tri_edge_ref_dist": tri_edge_ref_dist,
         "fragment_adj_index": fragment_adj_index,
     }
+
+
+def add_dummy_atoms(
+    frag_data: dict,
+    atom_coords: torch.Tensor,
+    atom_feats: dict,
+    rot_bonds: list[tuple[int, int]],
+) -> dict:
+    """Add dummy atoms at cut-bond boundaries (SigmaDock-style).
+
+    For each cut bond (a in frag_A, b in frag_B):
+    - Add a copy of b into frag_A (dummy)
+    - Add a copy of a into frag_B (dummy)
+
+    Dummy atoms have identical features to their real counterparts but belong
+    to the adjacent fragment.  Centroids are NOT recomputed (stay from real
+    atoms only).
+
+    Returns updated frag_data with extra keys:
+    - ``is_dummy``: ``[N_atom_ext]`` bool — True for dummy atoms
+    - ``dummy_to_real``: ``[N_dummy, 2]`` — (dummy_idx, real_idx) pairs
+    - All existing atom-level tensors extended with dummy entries
+    """
+    fragment_id = frag_data["fragment_id"]
+    frag_centers = frag_data["frag_centers"]
+    n_real = atom_coords.shape[0]
+
+    dummy_coords = []
+    dummy_frag_ids = []
+    dummy_to_real_pairs = []  # (dummy_idx, real_idx)
+    dummy_feat_indices = []  # index into real atoms to copy features from
+
+    idx = n_real  # next available atom index
+    for a, b in rot_bonds:
+        fa = fragment_id[a].item()
+        fb = fragment_id[b].item()
+        if fa == fb:
+            continue
+
+        # Add b as dummy in frag_A
+        dummy_coords.append(atom_coords[b])
+        dummy_frag_ids.append(fa)
+        dummy_to_real_pairs.append((idx, b))
+        dummy_feat_indices.append(b)
+        idx += 1
+
+        # Add a as dummy in frag_B
+        dummy_coords.append(atom_coords[a])
+        dummy_frag_ids.append(fb)
+        dummy_to_real_pairs.append((idx, a))
+        dummy_feat_indices.append(a)
+        idx += 1
+
+    n_dummy = len(dummy_coords)
+    if n_dummy == 0:
+        # No cut bonds → no dummies needed
+        frag_data["is_dummy"] = torch.zeros(n_real, dtype=torch.bool)
+        frag_data["dummy_to_real"] = torch.zeros(0, 2, dtype=torch.int64)
+        return frag_data
+
+    # Extended coordinates
+    dummy_coords_t = torch.stack(dummy_coords)  # [N_dummy, 3]
+    all_coords = torch.cat([atom_coords, dummy_coords_t])  # [N_ext, 3]
+
+    # Extended fragment IDs
+    dummy_frag_t = torch.tensor(dummy_frag_ids, dtype=torch.int64)
+    ext_frag_id = torch.cat([fragment_id, dummy_frag_t])
+
+    # Local coords for dummies (relative to their assigned fragment centroid)
+    dummy_local = dummy_coords_t - frag_centers[dummy_frag_t]
+    ext_local = torch.cat([frag_data["frag_local_coords"], dummy_local])
+
+    # Update frag_sizes to include dummies
+    ext_sizes = frag_data["frag_sizes"].clone()
+    for fid in dummy_frag_ids:
+        ext_sizes[fid] += 1
+
+    # is_dummy mask
+    is_dummy = torch.zeros(n_real + n_dummy, dtype=torch.bool)
+    is_dummy[n_real:] = True
+
+    # dummy_to_real mapping
+    dummy_to_real = torch.tensor(dummy_to_real_pairs, dtype=torch.int64)
+
+    # Extend atom features by copying from real counterparts
+    feat_idx = torch.tensor(dummy_feat_indices, dtype=torch.int64)
+    for key in ("atom_types", "charge", "aromatic", "hybridization", "in_ring"):
+        if key in atom_feats:
+            orig = atom_feats[key]
+            frag_data[key] = torch.cat([orig, orig[feat_idx]])
+
+    frag_data["atom_coords"] = all_coords
+    frag_data["fragment_id"] = ext_frag_id
+    frag_data["frag_local_coords"] = ext_local
+    frag_data["frag_sizes"] = ext_sizes
+    frag_data["is_dummy"] = is_dummy
+    frag_data["dummy_to_real"] = dummy_to_real
+    # frag_centers unchanged — computed from real atoms only
+
+    return frag_data
 
 
 def _get_rotatable_bonds(mol: Chem.Mol) -> list[tuple[int, int]]:

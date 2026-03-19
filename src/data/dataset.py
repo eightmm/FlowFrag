@@ -259,6 +259,15 @@ class FlowFragDataset(Dataset):
             cut_idx = torch.cat([cut_idx, cut_idx.flip(0)], dim=1)
         data["atom", "cut", "atom"].edge_index = cut_idx
 
+        # --- Dummy atom metadata (if present) ---
+        is_dummy = ligand.get("is_dummy")
+        if is_dummy is not None:
+            data["atom"].is_dummy = is_dummy
+            data["atom"].dummy_to_real = ligand["dummy_to_real"]
+        else:
+            data["atom"].is_dummy = torch.zeros(data["atom"].num_nodes, dtype=torch.bool)
+            data["atom"].dummy_to_real = torch.zeros(0, 2, dtype=torch.int64)
+
         # --- Fragment adjacency (topological, from cut bonds) ---
         frag_adj = ligand.get("fragment_adj_index", torch.zeros(2, 0, dtype=torch.int64))
         data["fragment", "adj", "fragment"].edge_index = frag_adj

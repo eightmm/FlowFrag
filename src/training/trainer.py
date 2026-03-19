@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, DistributedSampler, Subset
 
 from src.data.dataset import FlowFragDataset
 from src.models.flowfrag import FlowFrag
-from src.training.losses import flow_matching_loss, atom_velocity_loss, atom_position_auxiliary_loss, boundary_alignment_loss
+from src.training.losses import flow_matching_loss, atom_velocity_loss, atom_position_auxiliary_loss, boundary_alignment_loss, dummy_position_loss
 from src.geometry.se3 import quaternion_to_matrix
 
 
@@ -162,6 +162,7 @@ class Trainer:
         self.omega_mag_weight = tcfg.get("omega_mag_weight", 0.1)
         self.atom_aux_weight = tcfg.get("atom_aux_weight", 0.0)
         self.boundary_weight = tcfg.get("boundary_weight", 0.0)
+        self.dummy_weight = tcfg.get("dummy_weight", 0.0)
 
         # Wandb (initialized lazily after potential checkpoint load)
         self.use_wandb = cfg["logging"].get("use_wandb", False) and self.is_main
@@ -435,6 +436,17 @@ class Trainer:
                                 )
                                 losses["loss"] = losses["loss"] + self.boundary_weight * bnd["loss_boundary"]
                                 losses["loss_boundary"] = bnd["loss_boundary"].detach()
+                        # Dummy atom position matching loss
+                        if self.dummy_weight > 0:
+                            d2r = batch["atom"].dummy_to_real
+                            if d2r.shape[0] > 0:
+                                dum = dummy_position_loss(
+                                    out["v_pred"], out["omega_pred"],
+                                    batch["atom"].pos_t, batch["fragment"].T_frag,
+                                    batch["atom"].fragment_id, d2r,
+                                )
+                                losses["loss"] = losses["loss"] + self.dummy_weight * dum["loss_dummy"]
+                                losses["loss_dummy"] = dum["loss_dummy"].detach()
                     raw_loss = losses["loss"]
                     if not torch.isfinite(raw_loss):
                         print(f"  WARNING: non-finite loss at E{epoch} B{batch_idx}, skipping")

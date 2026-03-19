@@ -217,6 +217,51 @@ def atom_position_auxiliary_loss(
     return {"loss_atom_aux": loss}
 
 
+def dummy_position_loss(
+    v_pred: Tensor,
+    omega_pred: Tensor,
+    atom_pos_t: Tensor,
+    T_frag: Tensor,
+    fragment_id: Tensor,
+    dummy_to_real: Tensor,
+) -> dict[str, Tensor]:
+    """Position-matching loss between dummy atoms and their real counterparts.
+
+    Each dummy atom moves with its assigned fragment.  Its real counterpart
+    moves with the original fragment.  This loss penalizes the difference in
+    their predicted next-step velocities, forcing adjacent fragments to agree
+    at the boundary.
+
+    Args:
+        v_pred: Predicted fragment translation velocity ``[N_frag, 3]``.
+        omega_pred: Predicted fragment angular velocity ``[N_frag, 3]``.
+        atom_pos_t: Current atom positions ``[N_atom, 3]``.
+        T_frag: Current fragment centroids ``[N_frag, 3]``.
+        fragment_id: Fragment assignment per atom ``[N_atom]``.
+        dummy_to_real: ``[N_dummy, 2]`` — ``(dummy_idx, real_idx)`` pairs.
+
+    Returns:
+        Dict with ``"loss_dummy"`` (scalar, gradients enabled).
+    """
+    zero = torch.zeros(1, device=v_pred.device, dtype=v_pred.dtype).squeeze()
+    if dummy_to_real.shape[0] == 0:
+        return {"loss_dummy": zero}
+
+    d_idx = dummy_to_real[:, 0]  # dummy atom indices
+    r_idx = dummy_to_real[:, 1]  # real counterpart indices
+
+    # Velocity of dummy atom (moved by its assigned fragment)
+    r_d = atom_pos_t[d_idx] - T_frag[fragment_id[d_idx]]
+    v_dummy = v_pred[fragment_id[d_idx]] + torch.cross(omega_pred[fragment_id[d_idx]], r_d, dim=-1)
+
+    # Velocity of real counterpart (moved by its own fragment)
+    r_r = atom_pos_t[r_idx] - T_frag[fragment_id[r_idx]]
+    v_real = v_pred[fragment_id[r_idx]] + torch.cross(omega_pred[fragment_id[r_idx]], r_r, dim=-1)
+
+    loss = torch.mean((v_dummy - v_real) ** 2)
+    return {"loss_dummy": loss}
+
+
 def boundary_alignment_loss(
     v_pred: Tensor,
     omega_pred: Tensor,
@@ -269,5 +314,6 @@ __all__ = [
     "flow_matching_loss",
     "atom_velocity_loss",
     "atom_position_auxiliary_loss",
+    "dummy_position_loss",
     "boundary_alignment_loss",
 ]

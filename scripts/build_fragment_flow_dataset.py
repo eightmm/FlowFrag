@@ -16,7 +16,7 @@ from pathlib import Path
 
 import torch
 
-from src.preprocess.fragments import decompose_fragments
+from src.preprocess.fragments import decompose_fragments, add_dummy_atoms
 from src.preprocess.ligand import featurize_ligand, load_molecule
 from src.preprocess.protein import parse_pocket_pdb
 
@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
 
 
-def process_complex(complex_dir: Path, out_dir: Path) -> dict:
+def process_complex(complex_dir: Path, out_dir: Path, dummy: bool = False) -> dict:
     """Process a single protein-ligand complex.
 
     Returns a status dict for logging.
@@ -77,17 +77,31 @@ def process_complex(complex_dir: Path, out_dir: Path) -> dict:
         status["reason"] = "fragment_decomposition_failed"
         return status
 
+    # Optionally add dummy atoms at cut-bond boundaries
+    if dummy and frag_data.get("rot_bonds"):
+        frag_data = add_dummy_atoms(
+            frag_data, lig_data["atom_coords"], lig_data,
+            frag_data["rot_bonds"],
+        )
+        # Update lig_data with extended atom arrays from frag_data
+        for key in ("atom_coords", "atom_types", "charge", "aromatic", "hybridization", "in_ring"):
+            if key in frag_data:
+                lig_data[key] = frag_data[key]
+
     # Compute pocket center (mean of CA coords)
     pocket_center = prot_data["res_coords"].mean(dim=0)
+
+    n_atoms = lig_data["atom_coords"].shape[0]
 
     # Build meta
     meta = {
         "pdb_id": pdb_id,
         "pocket_center": pocket_center,
         "num_res": torch.tensor(prot_data["res_coords"].shape[0], dtype=torch.int64),
-        "num_atom": torch.tensor(lig_data["atom_coords"].shape[0], dtype=torch.int64),
+        "num_atom": torch.tensor(n_atoms, dtype=torch.int64),
         "num_frag": torch.tensor(frag_data["n_frags"], dtype=torch.int64),
         "used_mol2_fallback": torch.tensor(used_mol2, dtype=torch.bool),
+        "has_dummy_atoms": torch.tensor(dummy, dtype=torch.bool),
         "schema_version": SCHEMA_VERSION,
     }
 
@@ -100,6 +114,9 @@ def process_complex(complex_dir: Path, out_dir: Path) -> dict:
     lig_data["tri_edge_ref_dist"] = frag_data["tri_edge_ref_dist"]
     lig_data["fragment_adj_index"] = frag_data["fragment_adj_index"]
     lig_data["cut_bond_index"] = frag_data["cut_bond_index"]
+    if "is_dummy" in frag_data:
+        lig_data["is_dummy"] = frag_data["is_dummy"]
+        lig_data["dummy_to_real"] = frag_data["dummy_to_real"]
 
     # Save
     complex_out = out_dir / pdb_id
@@ -134,6 +151,7 @@ def main() -> None:
     parser.add_argument("--raw_dir", type=Path, default=Path("/mnt/data/PLI/P-L"))
     parser.add_argument("--out_dir", type=Path, default=Path("data/processed"))
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--dummy", action="store_true", help="Add dummy atoms at cut-bond boundaries")
     args = parser.parse_args()
 
     assert args.raw_dir.exists(), f"Raw data dir not found: {args.raw_dir}"
@@ -146,7 +164,7 @@ def main() -> None:
     results = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {
-            pool.submit(process_complex, c, args.out_dir): c for c in complexes
+            pool.submit(process_complex, c, args.out_dir, dummy=args.dummy): c for c in complexes
         }
         for future in as_completed(futures):
             try:
