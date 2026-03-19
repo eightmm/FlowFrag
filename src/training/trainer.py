@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, DistributedSampler, Subset
 
 from src.data.dataset import FlowFragDataset
 from src.models.flowfrag import FlowFrag
-from src.training.losses import flow_matching_loss, atom_velocity_loss, atom_position_auxiliary_loss
+from src.training.losses import flow_matching_loss, atom_velocity_loss, atom_position_auxiliary_loss, boundary_alignment_loss
 from src.geometry.se3 import quaternion_to_matrix
 
 
@@ -161,6 +161,7 @@ class Trainer:
         self.omega_dir_weight = tcfg.get("omega_dir_weight", 1.0)
         self.omega_mag_weight = tcfg.get("omega_mag_weight", 0.1)
         self.atom_aux_weight = tcfg.get("atom_aux_weight", 0.0)
+        self.boundary_weight = tcfg.get("boundary_weight", 0.0)
 
         # Wandb (initialized lazily after potential checkpoint load)
         self.use_wandb = cfg["logging"].get("use_wandb", False) and self.is_main
@@ -418,6 +419,22 @@ class Trainer:
                             )
                             losses["loss"] = losses["loss"] + self.atom_aux_weight * aux["loss_atom_aux"]
                             losses["loss_atom_aux"] = aux["loss_atom_aux"].detach()
+                        # Boundary alignment loss (cut-bond velocity consistency)
+                        if self.boundary_weight > 0:
+                            try:
+                                cut_edge = batch["atom", "cut", "atom"]
+                                has_cut = hasattr(cut_edge, "edge_index") and cut_edge.edge_index.shape[1] > 0
+                            except (KeyError, AttributeError):
+                                has_cut = False
+                            if has_cut:
+                                bnd = boundary_alignment_loss(
+                                    out["v_pred"], out["omega_pred"],
+                                    batch["atom"].pos_t, batch["fragment"].T_frag,
+                                    batch["atom"].fragment_id,
+                                    cut_edge.edge_index[0], cut_edge.edge_index[1],
+                                )
+                                losses["loss"] = losses["loss"] + self.boundary_weight * bnd["loss_boundary"]
+                                losses["loss_boundary"] = bnd["loss_boundary"].detach()
                     raw_loss = losses["loss"]
                     if not torch.isfinite(raw_loss):
                         print(f"  WARNING: non-finite loss at E{epoch} B{batch_idx}, skipping")

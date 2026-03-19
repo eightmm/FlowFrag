@@ -217,4 +217,57 @@ def atom_position_auxiliary_loss(
     return {"loss_atom_aux": loss}
 
 
-__all__ = ["flow_matching_loss", "atom_velocity_loss", "atom_position_auxiliary_loss"]
+def boundary_alignment_loss(
+    v_pred: Tensor,
+    omega_pred: Tensor,
+    atom_pos_t: Tensor,
+    T_frag: Tensor,
+    fragment_id: Tensor,
+    cut_src: Tensor,
+    cut_dst: Tensor,
+) -> dict[str, Tensor]:
+    """Boundary loss: predicted velocities at cut-bond atoms should agree.
+
+    For each cut bond (a in frag_A, b in frag_B), atom a's velocity predicted
+    by frag_A and atom b's velocity predicted by frag_B should bring them to
+    the same point.  This transforms rotation into a local point-matching
+    problem at fragment boundaries.
+
+    Args:
+        v_pred: Predicted fragment translation velocity ``[N_frag, 3]``.
+        omega_pred: Predicted fragment angular velocity ``[N_frag, 3]``.
+        atom_pos_t: Current atom positions ``[N_atom, 3]``.
+        T_frag: Current fragment centroids ``[N_frag, 3]``.
+        fragment_id: Fragment assignment per atom ``[N_atom]``.
+        cut_src: Source atom indices of cut-bond edges ``[E_cut]``.
+        cut_dst: Destination atom indices of cut-bond edges ``[E_cut]``.
+
+    Returns:
+        Dict with ``"loss_boundary"`` (scalar, gradients enabled).
+    """
+    zero = torch.zeros(1, device=v_pred.device, dtype=v_pred.dtype).squeeze()
+    if cut_src.shape[0] == 0:
+        return {"loss_boundary": zero}
+
+    # Compute predicted atom velocity for each cut-bond endpoint
+    # v_atom_i = v_frag[frag_of_i] + cross(omega_frag[frag_of_i], r_i)
+    r_src = atom_pos_t[cut_src] - T_frag[fragment_id[cut_src]]
+    r_dst = atom_pos_t[cut_dst] - T_frag[fragment_id[cut_dst]]
+
+    v_src = v_pred[fragment_id[cut_src]] + torch.cross(omega_pred[fragment_id[cut_src]], r_src, dim=-1)
+    v_dst = v_pred[fragment_id[cut_dst]] + torch.cross(omega_pred[fragment_id[cut_dst]], r_dst, dim=-1)
+
+    # After a dt step, src and dst should land at similar positions
+    # Current distance + velocity difference should shrink
+    # Loss: MSE between predicted velocities at the boundary pair
+    # If fragments move consistently, v_src ≈ v_dst for bonded atoms
+    loss = torch.mean((v_src - v_dst) ** 2)
+    return {"loss_boundary": loss}
+
+
+__all__ = [
+    "flow_matching_loss",
+    "atom_velocity_loss",
+    "atom_position_auxiliary_loss",
+    "boundary_alignment_loss",
+]

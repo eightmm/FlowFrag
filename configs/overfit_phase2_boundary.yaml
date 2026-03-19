@@ -1,0 +1,57 @@
+model:
+  hidden_dim: 256
+  num_encoder_layers_prot: 3
+  num_encoder_layers_lig: 4
+  num_docking_layers: 4
+  hidden_scalar_dim: 128
+  hidden_vec_dim: 32
+  pf_topology: full
+  ff_topology: full
+  omega_mode: neural_1e
+  use_cut_bond_edges: true
+
+data:
+  data_dir: data/processed
+  min_atoms: 5
+  max_atoms: 80
+  max_frags: 20
+  prior_sigma: 1.0
+  rotation_augmentation: ligand_uniform
+  deterministic: false
+  deterministic_augmentation: true
+  deterministic_prior: false
+  deterministic_time: false
+  num_workers: 0
+  val_split: 0.0
+
+training:
+  epochs: 6000
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  use_muon: false
+  lr: 1.0e-4
+  weight_decay: 0.0
+  omega_weight: 1.0
+  max_grad_norm: 0.5
+  scheduler_type: trapezoidal
+  warmup_ratio: 0.1
+  cooldown_ratio: 0.3
+  seed: 42
+  overfit_batches: 4
+  # Phase 1 loss improvements
+  omega_loss_frame: body
+  omega_loss_type: direction_magnitude
+  omega_dir_weight: 1.0
+  omega_mag_weight: 0.1
+  atom_aux_weight: 0.1
+  # Phase 2 boundary alignment
+  boundary_weight: 0.5
+
+logging:
+  use_wandb: true
+  wandb_project: flowfrag
+  wandb_run_name: overfit-phase2-boundary-alignment
+  log_every: 4
+  val_every: 0
+  save_every: 0
+  output_dir: outputs/overfit_phase2_boundary
