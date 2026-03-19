@@ -1,0 +1,44 @@
+model:
+  hidden_dim: 128
+  num_encoder_layers_prot: 2
+  num_encoder_layers_lig: 3
+  num_docking_layers: 3
+  hidden_scalar_dim: 128
+  hidden_vec_dim: 32
+  omega_mode: neural_1e
+
+data:
+  data_dir: data/processed
+  min_atoms: 5
+  max_atoms: 80
+  max_frags: 20
+  prior_sigma: 1.0
+  rotation_augmentation: ligand_uniform
+  deterministic: true
+  num_workers: 0
+  val_split: 0.0
+
+training:
+  epochs: 1000
+  batch_size: 4
+  gradient_accumulation_steps: 1
+  use_muon: true
+  lr: 3.0e-4
+  muon_lr: 0.02
+  weight_decay: 0.0
+  omega_weight: 1.0
+  max_grad_norm: 1.0
+  scheduler_type: trapezoidal
+  warmup_ratio: 0.05
+  cooldown_ratio: 0.3
+  seed: 42
+  overfit_batches: 4
+
+logging:
+  use_wandb: false
+  wandb_project: flowfrag
+  wandb_run_name: overfit-neural1e-q1neqI-strict
+  log_every: 10
+  val_every: 0
+  save_every: 0
+  output_dir: outputs/overfit_neural1e_q1neqI_strict

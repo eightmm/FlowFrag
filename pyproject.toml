@@ -1,0 +1,81 @@
+[project]
+name = "flowfrag"
+version = "0.1.0"
+description = "Fragment-based Flow Matching for Protein-Ligand Docking"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Core ML
+    "torch>=2.10.0",
+    "numpy>=1.24.0",
+    # Geometric Deep Learning
+    "torch-geometric>=2.7.0",
+    "torch-cluster>=1.6.0",
+    "torch-scatter>=2.1.0",
+    "torch-sparse>=0.6.0",
+    # SE(3) Equivariant Networks
+    "cuequivariance>=0.9.0",
+    "cuequivariance-torch>=0.9.0",
+    "cuequivariance-ops-torch-cu13>=0.9.0",
+    # Protein/Chemistry
+    "rdkit>=2023.9.0",
+    # Training utilities
+    "einops>=0.8.0",
+    "tqdm>=4.66.0",
+    "pyyaml>=6.0.0",
+    "scipy>=1.13.0",
+    "wandb>=0.16.0",
+    # Visualization
+    "matplotlib>=3.8.0",
+    # Graph utilities
+    "networkx>=3.0",
+    "e3nn>=0.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+find-links = [
+    "https://data.pyg.org/whl/torch-2.10.0+cu130.html",
+]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+
+[tool.uv.extra-build-dependencies]
+torch-cluster = ["torch"]
+torch-scatter = ["torch"]
+torch-sparse = ["torch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# uv
+.uv/
+uv.lock
+
+# PyTorch
+*.pth
+*.pt
+checkpoints/
+
+# Data
+data/raw/
+data/processed/
+*.sdf
+*.pdb
+*.mol2
+
+# Outputs
+outputs/
+wandb/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OMC artifacts
+.omc/
