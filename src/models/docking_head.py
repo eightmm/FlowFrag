@@ -186,11 +186,11 @@ class _MultiResInteractionLayer(nn.Module):
             node_irreps, node_irreps, sh_lmax=2, edge_scalar_dim=ra_edge, n_rbf=n_rbf,
         )
         self.aa_conv = EquivariantTPConv(
-            node_irreps, node_irreps, sh_lmax=1, edge_scalar_dim=aa_edge, n_rbf=n_rbf,
+            node_irreps, node_irreps, sh_lmax=2, edge_scalar_dim=aa_edge, n_rbf=n_rbf,
         )
         if use_cut_bond_edges:
             self.cut_conv = EquivariantTPConv(
-                node_irreps, node_irreps, sh_lmax=1, edge_scalar_dim=cut_edge, n_rbf=n_rbf,
+                node_irreps, node_irreps, sh_lmax=2, edge_scalar_dim=cut_edge, n_rbf=n_rbf,
             )
         else:
             self.cut_conv = None
@@ -204,7 +204,7 @@ class _MultiResInteractionLayer(nn.Module):
 
         # ---- Phase 2: Fragment-level TPs ----
         self.af_conv = EquivariantTPConv(
-            node_irreps, node_irreps, sh_lmax=1, edge_scalar_dim=af_edge, n_rbf=n_rbf,
+            node_irreps, node_irreps, sh_lmax=2, edge_scalar_dim=af_edge, n_rbf=n_rbf,
         )
         self.pf_conv = EquivariantTPConv(
             node_irreps, node_irreps, sh_lmax=2, edge_scalar_dim=pf_edge, n_rbf=n_rbf,
