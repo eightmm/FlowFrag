@@ -228,13 +228,26 @@ class FlowFragDataset(Dataset):
         data["protein"].num_nodes = protein["res_coords"].shape[0]
 
         # --- Ligand atoms (static features) ---
-        data["atom"].x = ligand["atom_element"]
-        data["atom"].charge = ligand["atom_charge"]
-        data["atom"].aromatic = ligand["atom_aromatic"]
-        data["atom"].hybridization = ligand["atom_hybridization"]
-        data["atom"].in_ring = ligand["atom_in_ring"]
-        data["atom"].fragment_id = ligand["fragment_id"]
-        data["atom"].num_nodes = ligand["atom_element"].shape[0]
+        # When dummy atoms are present, atom-level GNN nodes use real atoms only.
+        # Dummy metadata is stored separately for the boundary loss.
+        is_dummy = ligand.get("is_dummy")
+        if is_dummy is not None and is_dummy.any():
+            real_mask = ~is_dummy
+            n_real = int(real_mask.sum())
+        else:
+            real_mask = None
+            n_real = ligand["atom_element"].shape[0]
+
+        def _select(t: torch.Tensor) -> torch.Tensor:
+            return t[real_mask] if real_mask is not None else t
+
+        data["atom"].x = _select(ligand["atom_element"])
+        data["atom"].charge = _select(ligand["atom_charge"])
+        data["atom"].aromatic = _select(ligand["atom_aromatic"])
+        data["atom"].hybridization = _select(ligand["atom_hybridization"])
+        data["atom"].in_ring = _select(ligand["atom_in_ring"])
+        data["atom"].fragment_id = _select(ligand["fragment_id"])
+        data["atom"].num_nodes = n_real
 
         # --- Bonds ---
         data["atom", "bond", "atom"].edge_index = ligand["bond_index"]
@@ -260,12 +273,14 @@ class FlowFragDataset(Dataset):
         data["atom", "cut", "atom"].edge_index = cut_idx
 
         # --- Dummy atom metadata (if present) ---
-        is_dummy = ligand.get("is_dummy")
-        if is_dummy is not None:
-            data["atom"].is_dummy = is_dummy
+        # dummy_to_real maps (dummy_idx, real_idx) in the FULL (real+dummy) array.
+        # We store full-array coords, fragment_id, and local_pos so the boundary
+        # loss can reconstruct dummy positions at the current (v, omega).
+        if is_dummy is not None and is_dummy.any():
             data["atom"].dummy_to_real = ligand["dummy_to_real"]
+            data["atom"].dummy_fragment_id = ligand["fragment_id"]  # full array
+            data["atom"].dummy_local_pos = ligand["frag_local_coords"]  # full array
         else:
-            data["atom"].is_dummy = torch.zeros(data["atom"].num_nodes, dtype=torch.bool)
             data["atom"].dummy_to_real = torch.zeros(0, 2, dtype=torch.int64)
 
         # --- Fragment adjacency (topological, from cut bonds) ---
@@ -274,8 +289,15 @@ class FlowFragDataset(Dataset):
 
         # --- Fragment target (crystal pose, pocket-centered) ---
         T_1 = ligand["frag_centers"] - pocket_center  # [N_frag, 3]
-        frag_sizes = ligand["frag_sizes"]  # [N_frag]
         n_frags = T_1.shape[0]
+
+        # Use real-atom-only fragment_id and local_pos for the model path.
+        # Dummy atoms (if any) inflated frag_sizes; recompute from real atoms.
+        frag_id_real = _select(ligand["fragment_id"])
+        local_pos_orig_real = _select(ligand["frag_local_coords"])
+        frag_sizes = torch.zeros(n_frags, dtype=torch.int64)
+        frag_sizes.scatter_add_(0, frag_id_real, torch.ones_like(frag_id_real))
+
         identity_q = self._identity_quaternion(n_frags, dtype=T_1.dtype)
         prior_generator = self._make_generator(
             complex_idx,
@@ -294,9 +316,9 @@ class FlowFragDataset(Dataset):
         R_aug_q, q_1 = self._sample_target_rotation(complex_idx, n_frags, dtype=T_1.dtype)
         R_aug = quaternion_to_matrix(R_aug_q)  # [N_frag, 3, 3]
 
-        # Rotate local_coords: local_aug = R_aug @ local
-        frag_id = ligand["fragment_id"]
-        local_pos_orig = ligand["frag_local_coords"]
+        # Rotate local_coords: local_aug = R_aug @ local (real atoms only)
+        frag_id = frag_id_real
+        local_pos_orig = local_pos_orig_real
         local_pos = torch.einsum("nij,nj->ni", R_aug[frag_id], local_pos_orig)
 
         # Mask single-atom fragments to identity (rotation irrelevant)

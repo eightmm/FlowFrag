@@ -440,10 +440,18 @@ class Trainer:
                         if self.dummy_weight > 0:
                             d2r = batch["atom"].dummy_to_real
                             if d2r.shape[0] > 0:
+                                # Reconstruct full-array positions from fragment poses
+                                full_frag_id = batch["atom"].dummy_fragment_id
+                                full_local = batch["atom"].dummy_local_pos
+                                R_cur = quaternion_to_matrix(batch["fragment"].q_frag)
+                                full_pos = (
+                                    torch.einsum("nij,nj->ni", R_cur[full_frag_id], full_local)
+                                    + batch["fragment"].T_frag[full_frag_id]
+                                )
                                 dum = dummy_position_loss(
                                     out["v_pred"], out["omega_pred"],
-                                    batch["atom"].pos_t, batch["fragment"].T_frag,
-                                    batch["atom"].fragment_id, d2r,
+                                    full_pos, batch["fragment"].T_frag,
+                                    full_frag_id, d2r,
                                 )
                                 losses["loss"] = losses["loss"] + self.dummy_weight * dum["loss_dummy"]
                                 losses["loss_dummy"] = dum["loss_dummy"].detach()
