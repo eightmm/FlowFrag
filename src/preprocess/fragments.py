@@ -240,7 +240,7 @@ def add_dummy_atoms(
 
     # Extend atom features by copying from real counterparts
     feat_idx = torch.tensor(dummy_feat_indices, dtype=torch.int64)
-    for key in ("atom_types", "charge", "aromatic", "hybridization", "in_ring"):
+    for key in ("atom_element", "atom_charge", "atom_aromatic", "atom_hybridization", "atom_in_ring"):
         if key in atom_feats:
             orig = atom_feats[key]
             frag_data[key] = torch.cat([orig, orig[feat_idx]])
