@@ -18,7 +18,7 @@ import torch
 
 from src.preprocess.fragments import decompose_fragments, add_dummy_atoms
 from src.preprocess.ligand import featurize_ligand, load_molecule
-from src.preprocess.protein import parse_pocket_pdb
+from src.preprocess.protein import parse_pocket_pdb, parse_pocket_atoms
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,6 +88,13 @@ def process_complex(complex_dir: Path, out_dir: Path, dummy: bool = False) -> di
             if key in frag_data:
                 lig_data[key] = frag_data[key]
 
+    # Parse protein heavy atoms (optional, for atom-level pocket representation)
+    patom_data = parse_pocket_atoms(
+        pocket_pdb,
+        ligand_coords=lig_data["atom_coords"],
+        cutoff=8.0,
+    )
+
     # Compute pocket center (mean of CA coords)
     pocket_center = prot_data["res_coords"].mean(dim=0)
 
@@ -124,6 +131,8 @@ def process_complex(complex_dir: Path, out_dir: Path, dummy: bool = False) -> di
     torch.save(prot_data, complex_out / "protein.pt")
     torch.save(lig_data, complex_out / "ligand.pt")
     torch.save(meta, complex_out / "meta.pt")
+    if patom_data is not None:
+        torch.save(patom_data, complex_out / "protein_atoms.pt")
 
     status["success"] = True
     status["num_res"] = prot_data["res_coords"].shape[0]

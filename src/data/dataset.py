@@ -222,10 +222,32 @@ class FlowFragDataset(Dataset):
         data = HeteroData()
         data.pdb_id = pdb_id
 
-        # --- Protein (static context) ---
+        # --- Protein residues (static context) ---
         data["protein"].pos = protein["res_coords"] - pocket_center
         data["protein"].x = protein["res_type"]
         data["protein"].num_nodes = protein["res_coords"].shape[0]
+
+        # --- Protein heavy atoms (optional, static) ---
+        patom_path = data_dir / "protein_atoms.pt"
+        if patom_path.exists():
+            patom = torch.load(patom_path, weights_only=True)
+            data["protein_atom"].pos = patom["patom_coords"] - pocket_center
+            data["protein_atom"].x = patom["patom_element"]
+            data["protein_atom"].charge = patom["patom_charge"]
+            data["protein_atom"].aromatic = patom["patom_aromatic"]
+            data["protein_atom"].hybridization = patom["patom_hybridization"]
+            data["protein_atom"].in_ring = patom["patom_in_ring"]
+            data["protein_atom"].is_backbone = patom["patom_is_backbone"]
+            data["protein_atom"].num_nodes = patom["patom_coords"].shape[0]
+        else:
+            data["protein_atom"].pos = torch.zeros(0, 3, dtype=torch.float32)
+            data["protein_atom"].x = torch.zeros(0, dtype=torch.int64)
+            data["protein_atom"].charge = torch.zeros(0, dtype=torch.int8)
+            data["protein_atom"].aromatic = torch.zeros(0, dtype=torch.bool)
+            data["protein_atom"].hybridization = torch.zeros(0, dtype=torch.int8)
+            data["protein_atom"].in_ring = torch.zeros(0, dtype=torch.bool)
+            data["protein_atom"].is_backbone = torch.zeros(0, dtype=torch.bool)
+            data["protein_atom"].num_nodes = 0
 
         # --- Ligand atoms (static features) ---
         # When dummy atoms are present, atom-level GNN nodes use real atoms only.
