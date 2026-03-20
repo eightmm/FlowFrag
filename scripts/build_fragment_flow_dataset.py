@@ -84,7 +84,7 @@ def process_complex(complex_dir: Path, out_dir: Path, dummy: bool = False) -> di
             frag_data["rot_bonds"],
         )
         # Update lig_data with extended atom arrays from frag_data
-        for key in ("atom_coords", "atom_types", "charge", "aromatic", "hybridization", "in_ring"):
+        for key in ("atom_coords", "atom_element", "atom_charge", "atom_aromatic", "atom_hybridization", "atom_in_ring"):
             if key in frag_data:
                 lig_data[key] = frag_data[key]
 
