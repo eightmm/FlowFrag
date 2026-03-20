@@ -274,14 +274,17 @@ class FlowFragDataset(Dataset):
 
         # --- Dummy atom metadata (if present) ---
         # dummy_to_real maps (dummy_idx, real_idx) in the FULL (real+dummy) array.
-        # We store full-array coords, fragment_id, and local_pos so the boundary
-        # loss can reconstruct dummy positions at the current (v, omega).
+        # We store full-array fragment_id and local_pos so the boundary loss can
+        # reconstruct dummy positions from fragment poses.
+        # Always provide all keys for consistent batching.
         if is_dummy is not None and is_dummy.any():
             data["atom"].dummy_to_real = ligand["dummy_to_real"]
-            data["atom"].dummy_fragment_id = ligand["fragment_id"]  # full array
-            data["atom"].dummy_local_pos = ligand["frag_local_coords"]  # full array
+            n_full = ligand["fragment_id"].shape[0]
         else:
             data["atom"].dummy_to_real = torch.zeros(0, 2, dtype=torch.int64)
+            n_full = n_real
+        data["atom"].dummy_fragment_id = ligand["fragment_id"][:n_full]
+        data["atom"].dummy_local_pos = ligand["frag_local_coords"][:n_full]
 
         # --- Fragment adjacency (topological, from cut bonds) ---
         frag_adj = ligand.get("fragment_adj_index", torch.zeros(2, 0, dtype=torch.int64))
