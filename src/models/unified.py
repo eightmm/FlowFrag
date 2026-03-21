@@ -116,9 +116,13 @@ class UnifiedNodeEmbedding(nn.Module):
 class UnifiedInteractionLayer(nn.Module):
     """Single equivariant interaction layer over the unified graph.
 
-    Uses separate TP convolutions per edge type for maximum expressivity,
-    but all nodes share the same irreps space.
+    Uses ONE TP convolution for all edge types.  Edge-type specialization
+    comes from the edge scalar features: edge_type embedding + bond-specific
+    features (type, conjugation, ring, stereo) + RBF distance + node scalars.
     """
+
+    NUM_BOND_TYPES = 5
+    NUM_BOND_STEREO = 4
 
     def __init__(
         self,
@@ -134,23 +138,33 @@ class UnifiedInteractionLayer(nn.Module):
         super().__init__()
         self.scalar_dim = scalar_dim
         self.n_rbf = n_rbf
-        self.n_edge_types = n_edge_types
 
         node_irreps = cue.Irreps("O3", f"{scalar_dim}x0e + {vec_dim}x1o + {vec_dim}x1e + {l2_dim}x2e")
 
-        # Edge scalar dim: rbf + src_scalar + dst_scalar + t_emb
-        edge_dim = n_rbf + scalar_dim + scalar_dim + t_emb_dim
+        # Edge type embedding
+        self.edge_type_emb = nn.Embedding(n_edge_types, 16)
 
-        # One TP conv per edge type
-        self.convs = nn.ModuleList([
-            EquivariantTPConv(
-                node_irreps, node_irreps,
-                sh_lmax=sh_lmax,
-                edge_scalar_dim=edge_dim,
-                n_rbf=n_rbf,
-            )
-            for _ in range(n_edge_types)
-        ])
+        # Bond feature embeddings (only active for bond-type edges)
+        self.bond_type_emb = nn.Embedding(self.NUM_BOND_TYPES + 1, 8)  # +1 for "no bond"
+        self.bond_conj_emb = nn.Embedding(3, 4)  # 0=no, 1=yes, 2=N/A
+        self.bond_ring_emb = nn.Embedding(3, 4)  # 0=no, 1=yes, 2=N/A
+        self.bond_stereo_emb = nn.Embedding(self.NUM_BOND_STEREO + 1, 4)  # +1 for "N/A"
+
+        # Triangulation ref_dist feature
+        self.ref_dist_proj = nn.Linear(3, 8)  # rbf(|delta_d|) + delta_d + has_ref
+
+        # Edge scalar dim:
+        #   rbf(16) + edge_type(16) + bond(8+4+4+4) + ref_dist(8)
+        #   + src_scalar + dst_scalar + t_emb
+        edge_scalar_dim = n_rbf + 16 + 20 + 8 + scalar_dim + scalar_dim + t_emb_dim
+
+        # Single unified TP conv
+        self.conv = EquivariantTPConv(
+            node_irreps, node_irreps,
+            sh_lmax=sh_lmax,
+            edge_scalar_dim=edge_scalar_dim,
+            n_rbf=n_rbf,
+        )
 
         # Post-aggregation
         self.proj = cuet.Linear(node_irreps, node_irreps, layout=cue.mul_ir)
@@ -164,35 +178,49 @@ class UnifiedInteractionLayer(nn.Module):
         coords: Tensor,
         edge_index: Tensor,
         edge_type: Tensor,
+        edge_bond_type: Tensor,
+        edge_bond_conjugated: Tensor,
+        edge_bond_in_ring: Tensor,
+        edge_bond_stereo: Tensor,
+        edge_ref_dist: Tensor,
         t_emb: Tensor,
     ) -> Tensor:
         n = h.shape[0]
         S = self.scalar_dim
         h_s = h[:, :S]
 
-        # Aggregate messages from all edge types
-        msg_total = h.new_zeros(n, h.shape[1])
+        src = edge_index[0]
+        dst = edge_index[1]
 
-        for etype in range(self.n_edge_types):
-            mask = edge_type == etype
-            if not mask.any():
-                continue
-            src = edge_index[0, mask]
-            dst = edge_index[1, mask]
+        diff = coords[dst] - coords[src]
+        dist = torch.linalg.vector_norm(diff, dim=-1)
 
-            diff = coords[dst] - coords[src]
-            dist = torch.linalg.vector_norm(diff, dim=-1)
+        # Build edge scalar features
+        e_type = self.edge_type_emb(edge_type)
+        e_bond = torch.cat([
+            self.bond_type_emb(edge_bond_type),
+            self.bond_conj_emb(edge_bond_conjugated),
+            self.bond_ring_emb(edge_bond_in_ring),
+            self.bond_stereo_emb(edge_bond_stereo),
+        ], dim=-1)  # [E, 20]
 
-            edge_scalars = torch.cat([
-                rbf_encode(dist, self.n_rbf),
-                h_s[src], h_s[dst], t_emb[dst],
-            ], dim=-1)
+        # Triangulation ref_dist: delta_d = |current_dist - ref_dist|
+        has_ref = (edge_ref_dist > 0).float()
+        delta_d = dist - edge_ref_dist
+        e_ref = self.ref_dist_proj(torch.stack([
+            delta_d.abs(), delta_d, has_ref,
+        ], dim=-1))  # [E, 8]
 
-            msg = self.convs[etype](h, diff, edge_scalars, src, dst, n)
-            msg_total = msg_total + msg
+        edge_scalars = torch.cat([
+            rbf_encode(dist, self.n_rbf),
+            e_type, e_bond, e_ref,
+            h_s[src], h_s[dst], t_emb[dst],
+        ], dim=-1)
+
+        msg = self.conv(h, diff, edge_scalars, src, dst, n)
 
         # Update
-        update = self.proj(msg_total)
+        update = self.proj(msg)
         update = self.act(update)
         update = self.dropout(update)
         h = h + update
@@ -306,6 +334,13 @@ class UnifiedFlowFrag(nn.Module):
         edge_index = graph["edge_index"]
         edge_type = graph["edge_type"]
 
+        # Edge features (bond-specific, 0/default for non-bond edges)
+        edge_bond_type = graph.get("edge_bond_type", torch.zeros(edge_index.shape[1], dtype=torch.long, device=device))
+        edge_bond_conjugated = graph.get("edge_bond_conjugated", torch.full((edge_index.shape[1],), 2, dtype=torch.long, device=device))
+        edge_bond_in_ring = graph.get("edge_bond_in_ring", torch.full((edge_index.shape[1],), 2, dtype=torch.long, device=device))
+        edge_bond_stereo = graph.get("edge_bond_stereo", torch.full((edge_index.shape[1],), 4, dtype=torch.long, device=device))
+        edge_ref_dist = graph.get("edge_ref_dist", torch.zeros(edge_index.shape[1], dtype=torch.float32, device=device))
+
         frag_slice = graph["lig_frag_slice"]  # [start, end]
         frag_mask = node_type == NTYPE_FRAGMENT
         n_frag = int(frag_mask.sum())
@@ -371,7 +406,11 @@ class UnifiedFlowFrag(nn.Module):
         _1o_end = S + vec_dim * 3
 
         for layer in self.layers:
-            h = layer(h, coords, edge_index, edge_type, t_emb_nodes)
+            h = layer(
+                h, coords, edge_index, edge_type,
+                edge_bond_type, edge_bond_conjugated, edge_bond_in_ring,
+                edge_bond_stereo, edge_ref_dist, t_emb_nodes,
+            )
 
             # Re-inject R_t columns into fragment 1o (non-inplace)
             layer_rot_gate = self.frag_rot_gate(h[frag_idx, :S])
