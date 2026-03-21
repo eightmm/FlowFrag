@@ -149,7 +149,9 @@ def _build_triangulation_edges(
         fragment_adj_index = torch.zeros(2, 0, dtype=torch.int64)
 
     return {
-        "cut_bond_index": torch.tensor(rot_bonds, dtype=torch.int64).T if rot_bonds else torch.zeros(2, 0, dtype=torch.int64),
+        "cut_bond_index": torch.tensor(rot_bonds, dtype=torch.int64).T
+        if rot_bonds
+        else torch.zeros(2, 0, dtype=torch.int64),
         "tri_edge_index": tri_edge_index,
         "tri_edge_ref_dist": tri_edge_ref_dist,
         "fragment_adj_index": fragment_adj_index,
@@ -240,7 +242,25 @@ def add_dummy_atoms(
 
     # Extend atom features by copying from real counterparts
     feat_idx = torch.tensor(dummy_feat_indices, dtype=torch.int64)
-    for key in ("atom_element", "atom_charge", "atom_aromatic", "atom_hybridization", "atom_in_ring"):
+    feature_keys = (
+        "atom_element",
+        "atom_charge",
+        "atom_aromatic",
+        "atom_hybridization",
+        "atom_in_ring",
+        "atom_degree",
+        "atom_implicit_valence",
+        "atom_explicit_valence",
+        "atom_num_rings",
+        "atom_chirality",
+        "atom_is_donor",
+        "atom_is_acceptor",
+        "atom_is_positive",
+        "atom_is_negative",
+        "atom_is_hydrophobe",
+        "atom_is_halogen",
+    )
+    for key in feature_keys:
         if key in atom_feats:
             orig = atom_feats[key]
             frag_data[key] = torch.cat([orig, orig[feat_idx]])
