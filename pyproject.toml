@@ -30,6 +30,7 @@ dependencies = [
     # Graph utilities
     "networkx>=3.0",
     "e3nn>=0.6.0",
+    "posebusters>=0.6.5",
 ]
 
 [project.optional-dependencies]
