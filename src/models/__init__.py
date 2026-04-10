@@ -1,9 +1,6 @@
-"""Model code for the rebuilt fragment-flow pipeline."""
+"""Model code for the unified fragment-flow pipeline."""
 
-from .docking_head import DockingHead
 from .equivariant import EquivariantTPConv
-from .flowfrag import FlowFrag
-from .ligand_encoder import LigandEncoder
-from .protein_encoder import ProteinEncoder
+from .unified import UnifiedFlowFrag
 
-__all__ = ["DockingHead", "EquivariantTPConv", "FlowFrag", "LigandEncoder", "ProteinEncoder"]
+__all__ = ["EquivariantTPConv", "UnifiedFlowFrag"]

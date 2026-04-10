@@ -10,14 +10,88 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch_geometric.data import HeteroData
 
 import cuequivariance as cue
 import cuequivariance_torch as cuet
 
 from .equivariant import EquivariantTPConv, EquivariantAdaLN, ScalarActivation, EquivariantDropout
 from .layers import rbf_encode, sinusoidal_embedding, scatter_mean
-from ..geometry.se3 import quaternion_to_matrix, quaternion_to_axis_angle
+from ..geometry.se3 import quaternion_to_matrix
+
+
+def _build_node_irreps(scalar_dim: int, vec_dim: int, l2_dim: int, l2o_dim: int = 0) -> cue.Irreps:
+    """Build node irreps string, omitting 2e/2o if dims are 0."""
+    parts = [f"{scalar_dim}x0e", f"{vec_dim}x1o", f"{vec_dim}x1e"]
+    if l2_dim > 0:
+        parts.append(f"{l2_dim}x2e")
+    if l2o_dim > 0:
+        parts.append(f"{l2o_dim}x2o")
+    return cue.Irreps("O3", " + ".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Newton-Euler aggregation: atom forces → fragment (v, omega)
+# ---------------------------------------------------------------------------
+
+def newton_euler_aggregate(
+    f_atom: Tensor,
+    atom_pos: Tensor,
+    T_frag: Tensor,
+    frag_id: Tensor,
+    n_frag: int,
+    frag_sizes: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Aggregate per-atom forces to fragment translation/angular velocities.
+
+    Args:
+        f_atom: Per-atom force vectors [N_atom, 3].
+        atom_pos: Atom positions at time t [N_atom, 3].
+        T_frag: Fragment centers [N_frag, 3].
+        frag_id: Fragment assignment per atom [N_atom].
+        n_frag: Number of fragments.
+        frag_sizes: Fragment sizes [N_frag].
+
+    Returns:
+        v_frag: Translation velocity [N_frag, 3].
+        omega_frag: Angular velocity [N_frag, 3].
+    """
+    # Translation: mean force per fragment
+    v_frag = scatter_mean(f_atom, frag_id, n_frag)
+
+    # Lever arm: atom position relative to fragment center
+    r_arm = atom_pos - T_frag[frag_id]  # [N_atom, 3]
+
+    # Torque: sum of cross(r, f) per fragment
+    torque_per_atom = torch.cross(r_arm, f_atom, dim=-1)  # [N_atom, 3]
+    torque = torch.zeros(n_frag, 3, device=f_atom.device, dtype=f_atom.dtype)
+    torque.scatter_add_(0, frag_id.unsqueeze(-1).expand_as(torque_per_atom), torque_per_atom)
+
+    # Inertia tensor per fragment: I = sum(|r|^2 * I_3 - r ⊗ r)
+    r2 = (r_arm * r_arm).sum(-1, keepdim=True)  # [N_atom, 1]
+    # Diagonal: sum(|r|^2) per fragment
+    I_diag = torch.zeros(n_frag, 1, device=f_atom.device, dtype=f_atom.dtype)
+    I_diag.scatter_add_(0, frag_id.unsqueeze(-1), r2)
+    I_diag = I_diag.expand(-1, 3)  # [N_frag, 3]
+
+    # Off-diagonal: sum(r_i * r_j) per fragment — build full 3x3
+    rr = r_arm.unsqueeze(-1) * r_arm.unsqueeze(-2)  # [N_atom, 3, 3]
+    I_off = torch.zeros(n_frag, 3, 3, device=f_atom.device, dtype=f_atom.dtype)
+    I_off.scatter_add_(0, frag_id.view(-1, 1, 1).expand_as(rr), rr)
+
+    I_tensor = torch.diag_embed(I_diag) - I_off  # [N_frag, 3, 3]
+
+    # Regularize for single-atom fragments (degenerate inertia)
+    eps = 1e-4
+    I_tensor = I_tensor + eps * torch.eye(3, device=f_atom.device, dtype=f_atom.dtype)
+
+    # Solve I @ omega = torque
+    omega_frag = torch.linalg.solve(I_tensor, torque.unsqueeze(-1)).squeeze(-1)
+
+    # Zero out single-atom fragments
+    single_mask = (frag_sizes <= 1).unsqueeze(-1)
+    omega_frag = omega_frag.masked_fill(single_mask, 0.0)
+
+    return v_frag, omega_frag
 
 
 # ---------------------------------------------------------------------------
@@ -30,10 +104,12 @@ NTYPE_PROT_ATOM = 3
 NTYPE_PROT_CA = 4
 NUM_NODE_TYPES = 5
 
-# Edge type names (for documentation; actual dispatch uses integer indices)
-# 0=lig_bond, 1=lig_tri, 2=lig_cut, 3=lig_dummy_bond, 4=frag_adj,
-# 5=prot_bond, 6=prot_lig_contact, 7=prot_ca_connect, 8=ca_ca
-NUM_EDGE_TYPES = 9
+# Edge type names (from src/preprocess/graph.py EDGE_TYPES)
+# 0=ligand_bond, 1=ligand_tri, 2=ligand_cut, 3=ligand_atom_frag,
+# 4=ligand_frag_frag, 5=protein_bond, 6=protein_atom_ca,
+# 7=protein_ca_ca, 8=protein_ca_frag, 9=dynamic_contact (runtime)
+ETYPE_DYNAMIC_CONTACT = 9
+NUM_EDGE_TYPES = 10
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +150,6 @@ class UnifiedNodeEmbedding(nn.Module):
         )
 
     def forward(self, graph: dict[str, Tensor]) -> Tensor:
-        n = graph["num_nodes"]
         h = self.elem_emb(graph["node_element"].clamp(max=self.NUM_ELEMENTS - 1))
         h = h + nn.functional.pad(self.charge_proj(graph["node_charge"].float().unsqueeze(-1)), (0, 24))
         h = h + nn.functional.pad(self.aromatic_emb(graph["node_aromatic"].long()), (0, 24))
@@ -134,12 +209,13 @@ class UnifiedInteractionLayer(nn.Module):
         n_rbf: int = 16,
         sh_lmax: int = 2,
         dropout: float = 0.0,
+        l2o_dim: int = 0,
     ) -> None:
         super().__init__()
         self.scalar_dim = scalar_dim
         self.n_rbf = n_rbf
 
-        node_irreps = cue.Irreps("O3", f"{scalar_dim}x0e + {vec_dim}x1o + {vec_dim}x1e + {l2_dim}x2e")
+        node_irreps = _build_node_irreps(scalar_dim, vec_dim, l2_dim, l2o_dim)
 
         # Edge type embedding
         self.edge_type_emb = nn.Embedding(n_edge_types, 16)
@@ -196,12 +272,20 @@ class UnifiedInteractionLayer(nn.Module):
         dist = torch.linalg.vector_norm(diff, dim=-1)
 
         # Build edge scalar features
-        e_type = self.edge_type_emb(edge_type)
+        # Preprocessing convention: -1 = "not a bond edge" sentinel.
+        # Model convention: index 0 = "no bond / N/A", so shift -1 → 0.
+        # For conjugated/in_ring (stored as bool), non-bond edges get 2 (N/A).
+        e_type = self.edge_type_emb(edge_type.long())
+        is_bond_edge = (edge_bond_type >= 0)  # True for actual bond edges
+        conj_idx = edge_bond_conjugated.long()  # 0=no, 1=yes
+        conj_idx = torch.where(is_bond_edge, conj_idx, torch.full_like(conj_idx, 2))  # non-bond → 2 (N/A)
+        ring_idx = edge_bond_in_ring.long()
+        ring_idx = torch.where(is_bond_edge, ring_idx, torch.full_like(ring_idx, 2))
         e_bond = torch.cat([
-            self.bond_type_emb(edge_bond_type),
-            self.bond_conj_emb(edge_bond_conjugated),
-            self.bond_ring_emb(edge_bond_in_ring),
-            self.bond_stereo_emb(edge_bond_stereo),
+            self.bond_type_emb(edge_bond_type.long() + 1),    # -1→0(no bond), 0→1, ...
+            self.bond_conj_emb(conj_idx),                      # 0=no, 1=yes, 2=N/A
+            self.bond_ring_emb(ring_idx),                      # 0=no, 1=yes, 2=N/A
+            self.bond_stereo_emb(edge_bond_stereo.long() + 1), # -1→0(N/A), 0→1, ...
         ], dim=-1)  # [E, 20]
 
         # Triangulation ref_dist: delta_d = |current_dist - ref_dist|
@@ -256,20 +340,28 @@ class UnifiedFlowFrag(nn.Module):
         hidden_dim: int = 256,
         hidden_vec_dim: int = 32,
         l2_dim: int = 16,
+        l2o_dim: int = 0,
         num_layers: int = 4,
         n_rbf: int = 16,
         t_emb_dim: int = 128,
         sh_lmax: int = 2,
         max_frag_size: int = 30,
         dropout: float = 0.0,
-        # Compat kwargs for old config keys
-        **kwargs,
+        omega_mode: str = "direct",
+        contact_cutoff: float = 0.0,
+        prune_edge_types: list[int] | None = None,
+        rt_injection: str = "per_layer",
     ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         self.hidden_vec_dim = hidden_vec_dim
         self.l2_dim = l2_dim
+        self.l2o_dim = l2o_dim
         self.n_rbf = n_rbf
+        self.omega_mode = omega_mode
+        self.contact_cutoff = contact_cutoff
+        self.prune_edge_types = set(prune_edge_types) if prune_edge_types else set()
+        self.rt_injection = rt_injection
 
         # Node embedding (scalar)
         self.node_emb = UnifiedNodeEmbedding(hidden_dim)
@@ -311,94 +403,153 @@ class UnifiedFlowFrag(nn.Module):
                 n_rbf=n_rbf,
                 sh_lmax=sh_lmax,
                 dropout=dropout,
+                l2o_dim=l2o_dim,
             )
             for _ in range(num_layers)
         ])
 
-        # Output head (operates on fragment nodes only)
-        node_irreps = cue.Irreps("O3", f"{hidden_dim}x0e + {hidden_vec_dim}x1o + {hidden_vec_dim}x1e + {l2_dim}x2e")
-        head_irreps = cue.Irreps("O3", f"{hidden_dim // 2}x0e + {hidden_vec_dim}x1o + {hidden_vec_dim}x1e + {l2_dim}x2e")
+        # Output heads
+        node_irreps = _build_node_irreps(hidden_dim, hidden_vec_dim, l2_dim, l2o_dim)
+        head_irreps = _build_node_irreps(hidden_dim // 2, hidden_vec_dim, l2_dim, l2o_dim)
 
-        self.head_pre = cuet.Linear(node_irreps, head_irreps, layout=cue.mul_ir)
-        self.head_act = ScalarActivation(head_irreps)
-        self.v_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1o"), layout=cue.mul_ir)
-        self.omega_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1e"), layout=cue.mul_ir)
+        if omega_mode in ("newton_euler", "hybrid"):
+            # Atom-level force head: predict f_atom (1o) from ligand atom nodes
+            self.atom_head_pre = cuet.Linear(node_irreps, head_irreps, layout=cue.mul_ir)
+            self.atom_head_act = ScalarActivation(head_irreps)
+            self.f_atom_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1o"), layout=cue.mul_ir)
 
-    def forward(self, batch: HeteroData) -> dict[str, Tensor]:
-        graph = batch["graph"]  # unified graph from graph.pt
-        device = graph["node_coords"].device
+        if omega_mode in ("direct", "hybrid"):
+            # Direct fragment-level head
+            self.head_pre = cuet.Linear(node_irreps, head_irreps, layout=cue.mul_ir)
+            self.head_act = ScalarActivation(head_irreps)
+            self.v_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1o"), layout=cue.mul_ir)
+            if omega_mode == "direct":
+                self.omega_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1e"), layout=cue.mul_ir)
 
-        n_nodes = graph["num_nodes"]
-        coords = graph["node_coords"]
-        node_type = graph["node_type"]
-        edge_index = graph["edge_index"]
-        edge_type = graph["edge_type"]
+    def forward(self, batch: dict[str, Tensor]) -> dict[str, Tensor]:
+        """Forward pass on a collated batch from UnifiedDataset.
+
+        The batch dict contains all graph.pt tensors (node_coords already
+        updated with flow matching poses), plus T_frag, q_frag, frag_sizes,
+        t, batch (node→sample), frag_batch (frag→sample).
+        """
+        device = batch["node_coords"].device
+        n_nodes = batch["node_coords"].shape[0]
+        coords = batch["node_coords"]
+        node_type = batch["node_type"]
+        edge_index = batch["edge_index"]
+        edge_type = batch["edge_type"]
 
         # Edge features (bond-specific, 0/default for non-bond edges)
-        edge_bond_type = graph.get("edge_bond_type", torch.zeros(edge_index.shape[1], dtype=torch.long, device=device))
-        edge_bond_conjugated = graph.get("edge_bond_conjugated", torch.full((edge_index.shape[1],), 2, dtype=torch.long, device=device))
-        edge_bond_in_ring = graph.get("edge_bond_in_ring", torch.full((edge_index.shape[1],), 2, dtype=torch.long, device=device))
-        edge_bond_stereo = graph.get("edge_bond_stereo", torch.full((edge_index.shape[1],), 4, dtype=torch.long, device=device))
-        edge_ref_dist = graph.get("edge_ref_dist", torch.zeros(edge_index.shape[1], dtype=torch.float32, device=device))
+        n_edges = edge_index.shape[1]
+        edge_bond_type = batch.get("edge_bond_type", torch.zeros(n_edges, dtype=torch.long, device=device))
+        edge_bond_conjugated = batch.get("edge_bond_conjugated", torch.full((n_edges,), 2, dtype=torch.long, device=device))
+        edge_bond_in_ring = batch.get("edge_bond_in_ring", torch.full((n_edges,), 2, dtype=torch.long, device=device))
+        edge_bond_stereo = batch.get("edge_bond_stereo", torch.full((n_edges,), 4, dtype=torch.long, device=device))
+        edge_ref_dist = batch.get("edge_ref_dist", torch.zeros(n_edges, dtype=torch.float32, device=device))
 
-        frag_slice = graph["lig_frag_slice"]  # [start, end]
+        # Prune specified edge types
+        if self.prune_edge_types:
+            keep_mask = torch.ones(n_edges, dtype=torch.bool, device=device)
+            for et in self.prune_edge_types:
+                keep_mask &= (edge_type != et)
+            edge_index = edge_index[:, keep_mask]
+            edge_type = edge_type[keep_mask]
+            edge_bond_type = edge_bond_type[keep_mask]
+            edge_bond_conjugated = edge_bond_conjugated[keep_mask]
+            edge_bond_in_ring = edge_bond_in_ring[keep_mask]
+            edge_bond_stereo = edge_bond_stereo[keep_mask]
+            edge_ref_dist = edge_ref_dist[keep_mask]
+            n_edges = edge_index.shape[1]
+
+        # Dynamic protein_atom ↔ ligand_atom contact edges (rebuilt per forward)
+        if self.contact_cutoff > 0:
+            prot_atom_mask = node_type == NTYPE_PROT_ATOM
+            lig_atom_mask = node_type == NTYPE_LIG_ATOM
+            prot_idx_all = prot_atom_mask.nonzero(as_tuple=True)[0]
+            lig_idx_all = lig_atom_mask.nonzero(as_tuple=True)[0]
+
+            if prot_idx_all.shape[0] > 0 and lig_idx_all.shape[0] > 0:
+                dists = torch.cdist(coords[prot_idx_all], coords[lig_idx_all])
+                contact_mask = dists <= self.contact_cutoff
+                pi, li = contact_mask.nonzero(as_tuple=True)
+                if pi.shape[0] > 0:
+                    c_src = torch.cat([prot_idx_all[pi], lig_idx_all[li]])
+                    c_dst = torch.cat([lig_idx_all[li], prot_idx_all[pi]])
+                    n_contact = c_src.shape[0]
+
+                    edge_index = torch.cat([edge_index, torch.stack([c_src, c_dst])], dim=1)
+                    edge_type = torch.cat([edge_type, torch.full((n_contact,), ETYPE_DYNAMIC_CONTACT, dtype=edge_type.dtype, device=device)])
+                    edge_bond_type = torch.cat([edge_bond_type, torch.full((n_contact,), -1, dtype=edge_bond_type.dtype, device=device)])
+                    edge_bond_conjugated = torch.cat([edge_bond_conjugated, torch.zeros(n_contact, dtype=edge_bond_conjugated.dtype, device=device)])
+                    edge_bond_in_ring = torch.cat([edge_bond_in_ring, torch.zeros(n_contact, dtype=edge_bond_in_ring.dtype, device=device)])
+                    edge_bond_stereo = torch.cat([edge_bond_stereo, torch.full((n_contact,), -1, dtype=edge_bond_stereo.dtype, device=device)])
+                    edge_ref_dist = torch.cat([edge_ref_dist, torch.zeros(n_contact, dtype=edge_ref_dist.dtype, device=device)])
+                    n_edges = edge_index.shape[1]
+
         frag_mask = node_type == NTYPE_FRAGMENT
-        n_frag = int(frag_mask.sum())
+        frag_idx = frag_mask.nonzero(as_tuple=True)[0]
+        n_frag = frag_idx.shape[0]
 
-        # Fragment data from batch
-        T_frag = batch["fragment"].T_frag
-        q_frag = batch["fragment"].q_frag
-        frag_sizes = batch["fragment"].size
-        t_val = batch.t
+        # Fragment data
+        q_frag = batch["q_frag"]
+        frag_sizes = batch["frag_sizes"]
 
         # --- Time embedding ---
-        t_sin = sinusoidal_embedding(t_val.view(-1), dim=32)
-        t_emb = self.t_emb_mlp(t_sin)
-        # Broadcast to all nodes
-        t_emb_nodes = t_emb.expand(n_nodes, -1)
+        # batch["t"] is [B, 1], broadcast to each node via batch["batch"]
+        t_per_sample = batch["t"].view(-1)  # [B]
+        t_sin = sinusoidal_embedding(t_per_sample, dim=32)  # [B, 32]
+        t_emb = self.t_emb_mlp(t_sin)  # [B, t_emb_dim]
+        node_batch_idx = batch["batch"]  # [N_nodes]
+        t_emb_nodes = t_emb[node_batch_idx]  # [N_nodes, t_emb_dim]
+
+        # Per-fragment time embedding
+        frag_batch_idx = batch["frag_batch"]  # [N_frag]
+        t_emb_frags = t_emb[frag_batch_idx]  # [N_frag, t_emb_dim]
 
         # --- Node scalar embedding ---
-        h_scalar = self.node_emb(graph)  # [N, hidden_dim]
+        h_scalar = self.node_emb(batch)  # [N, hidden_dim]
 
         # Fragment-specific init: add size + time
-        frag_idx = frag_mask.nonzero(as_tuple=True)[0]
         size_clamped = frag_sizes.clamp(max=30).long()
         size_feat = self.frag_size_emb(size_clamped)
         h_frag_init = self.frag_init_mlp(
-            torch.cat([h_scalar[frag_idx], size_feat, t_emb.expand(n_frag, -1)], dim=-1)
+            torch.cat([h_scalar[frag_idx], size_feat, t_emb_frags], dim=-1)
         )
         h_scalar = h_scalar.clone()
         h_scalar[frag_idx] = h_frag_init
 
-        # --- Build equivariant state: 0e + 1o + 1e + 2e ---
+        # --- Build equivariant state: 0e + 1o + 1e [+ 2e] ---
         vec_dim = self.hidden_vec_dim
         l2 = self.l2_dim
 
-        # 1o init: gated displacement from center
-        pocket_center = coords.mean(0, keepdim=True)
-        r = coords - pocket_center
+        # 1o init: gated displacement from per-sample center
+        n_samples = t_per_sample.shape[0]
+        center_per_sample = scatter_mean(coords, node_batch_idx, n_samples)  # [B, 3]
+        r = coords - center_per_sample[node_batch_idx]
+
         gate = self.vec_gate(h_scalar)  # [N, vec_dim]
         h_1o = (gate.unsqueeze(-1) * r.unsqueeze(1)).reshape(n_nodes, vec_dim * 3)
 
         # Fragment rotation injection (R_t columns → 1o)
         R_frag = quaternion_to_matrix(q_frag)
-        R_cols = R_frag.transpose(-1, -2)
-        rot_gate = self.frag_rot_gate(h_scalar[frag_idx])
-        rot_gate = rot_gate.view(n_frag, 3, vec_dim)
-        rot_vecs = (rot_gate.unsqueeze(-1) * R_cols.unsqueeze(2)).sum(dim=1)
+        R_cols = R_frag.transpose(-1, -2)  # [N_frag, 3, 3]
         h_1o_clone = h_1o.clone()
-        h_1o_clone[frag_idx] = h_1o_clone[frag_idx] + rot_vecs.reshape(n_frag, vec_dim * 3)
+        if self.rt_injection != "off":
+            rot_gate = self.frag_rot_gate(h_scalar[frag_idx])
+            rot_gate = rot_gate.view(n_frag, 3, vec_dim)
+            rot_vecs = (rot_gate.unsqueeze(-1) * R_cols.unsqueeze(2)).sum(dim=1)
+            h_1o_clone[frag_idx] = h_1o_clone[frag_idx] + rot_vecs.reshape(n_frag, vec_dim * 3)
 
-        # 1e + 2e zero init
+        # 1e [+ 2e] [+ 2o] zero init
         h_1e = torch.zeros(n_nodes, vec_dim * 3, device=device, dtype=coords.dtype)
-        h_2e = torch.zeros(n_nodes, l2 * 5, device=device, dtype=coords.dtype)
-
-        h = torch.cat([h_scalar, h_1o_clone, h_1e, h_2e], dim=-1)
-
-        # --- Update coordinates for current poses ---
-        # Fragment nodes use T_frag, ligand atoms use pos_t
-        # For now, use static coords from graph (crystal + pocket-centered)
-        # This will be updated when we integrate flow matching state
+        parts = [h_scalar, h_1o_clone, h_1e]
+        if l2 > 0:
+            parts.append(torch.zeros(n_nodes, l2 * 5, device=device, dtype=coords.dtype))
+        l2o = self.l2o_dim
+        if l2o > 0:
+            parts.append(torch.zeros(n_nodes, l2o * 5, device=device, dtype=coords.dtype))
+        h = torch.cat(parts, dim=-1)
 
         # --- Interaction layers with per-layer R_t re-injection ---
         S = self.hidden_dim
@@ -413,19 +564,50 @@ class UnifiedFlowFrag(nn.Module):
             )
 
             # Re-inject R_t columns into fragment 1o (non-inplace)
-            layer_rot_gate = self.frag_rot_gate(h[frag_idx, :S])
-            layer_rot_gate = layer_rot_gate.view(n_frag, 3, vec_dim)
-            layer_rot_vecs = (layer_rot_gate.unsqueeze(-1) * R_cols.unsqueeze(2)).sum(dim=1)
-            h_new_1o = h[:, _1o_start:_1o_end].clone()
-            h_new_1o[frag_idx] = h_new_1o[frag_idx] + layer_rot_vecs.reshape(n_frag, vec_dim * 3)
-            h = torch.cat([h[:, :_1o_start], h_new_1o, h[:, _1o_end:]], dim=-1)
+            if self.rt_injection == "per_layer":
+                layer_rot_gate = self.frag_rot_gate(h[frag_idx, :S])
+                layer_rot_gate = layer_rot_gate.view(n_frag, 3, vec_dim)
+                layer_rot_vecs = (layer_rot_gate.unsqueeze(-1) * R_cols.unsqueeze(2)).sum(dim=1)
+                h_new_1o = h[:, _1o_start:_1o_end].clone()
+                h_new_1o[frag_idx] = h_new_1o[frag_idx] + layer_rot_vecs.reshape(n_frag, vec_dim * 3)
+                h = torch.cat([h[:, :_1o_start], h_new_1o, h[:, _1o_end:]], dim=-1)
 
-        # --- Output: extract fragment nodes ---
-        h_frag = h[frag_idx]
-        h_head = self.head_pre(h_frag)
-        h_head = self.head_act(h_head)
-        v_pred = self.v_linear(h_head)
-        omega_pred = self.omega_linear(h_head)
+        # --- Output ---
+        if self.omega_mode in ("newton_euler", "hybrid"):
+            # Extract ligand atom nodes → atom forces
+            atom_mask = node_type == NTYPE_LIG_ATOM
+            atom_idx = atom_mask.nonzero(as_tuple=True)[0]
+            h_atoms = h[atom_idx]
+
+            h_atom_head = self.atom_head_pre(h_atoms)
+            h_atom_head = self.atom_head_act(h_atom_head)
+            f_atom = self.f_atom_linear(h_atom_head)  # [N_lig_atom, 3]
+
+            # Newton-Euler: atom forces → fragment (v_ne, omega_ne)
+            atom_pos = coords[atom_idx]
+            T_frag = batch["T_frag"]
+            atom_frag_id = batch["frag_id_for_atoms"]
+
+            v_ne, omega_ne = newton_euler_aggregate(
+                f_atom, atom_pos, T_frag, atom_frag_id, n_frag, frag_sizes,
+            )
+
+        if self.omega_mode == "newton_euler":
+            v_pred, omega_pred = v_ne, omega_ne
+        elif self.omega_mode == "hybrid":
+            # Direct v from fragment nodes, N-E omega from atom forces
+            h_frag = h[frag_idx]
+            h_head = self.head_pre(h_frag)
+            h_head = self.head_act(h_head)
+            v_pred = self.v_linear(h_head)
+            omega_pred = omega_ne
+        else:
+            # Direct: both from fragment nodes
+            h_frag = h[frag_idx]
+            h_head = self.head_pre(h_frag)
+            h_head = self.head_act(h_head)
+            v_pred = self.v_linear(h_head)
+            omega_pred = self.omega_linear(h_head)
 
         # Mask single-atom fragments
         omega_pred = omega_pred * (frag_sizes > 1).float().unsqueeze(-1)

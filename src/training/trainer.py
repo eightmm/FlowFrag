@@ -14,9 +14,10 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 
-from src.data.dataset import FlowFragDataset
-from src.models.flowfrag import FlowFrag
-from src.training.losses import flow_matching_loss, atom_velocity_loss, atom_position_auxiliary_loss, boundary_alignment_loss, dummy_position_loss
+from src.data.unified_dataset import UnifiedDataset, unified_collate
+from src.geometry.flow_matching import integrate_se3_step, sample_prior_poses
+from src.models.unified import UnifiedFlowFrag
+from src.training.losses import flow_matching_loss
 from src.geometry.se3 import quaternion_to_matrix
 
 
@@ -93,16 +94,6 @@ def get_trapezoidal_scheduler(
 
 
 # ---------------------------------------------------------------------------
-# Collate
-# ---------------------------------------------------------------------------
-
-def hetero_collate(batch):
-    """Collate HeteroData list via PyG Batch."""
-    from torch_geometric.data import Batch
-    return Batch.from_data_list(batch)
-
-
-# ---------------------------------------------------------------------------
 # Trainer
 # ---------------------------------------------------------------------------
 
@@ -125,7 +116,8 @@ class Trainer:
         self._build_dataloaders()
 
         # Model
-        self.model = FlowFrag(**cfg["model"]).to(self.device)
+        model_kwargs = {k: v for k, v in cfg["model"].items() if k != "model_type"}
+        self.model = UnifiedFlowFrag(**model_kwargs).to(self.device)
         if self.world_size > 1:
             self.model = DDP(
                 self.model, device_ids=[self.local_rank],
@@ -195,16 +187,15 @@ class Trainer:
         )
 
         split_file = dcfg.get("split_file")
+        DatasetClass = UnifiedDataset
 
         if split_file is not None:
-            # JSON or text split file → separate datasets
-            train_ds = FlowFragDataset(split_file=split_file, split_key="train", **ds_kwargs)
-            val_ds = FlowFragDataset(split_file=split_file, split_key="val", **ds_kwargs)
+            train_ds = DatasetClass(split_file=split_file, split_key="train", **ds_kwargs)
+            val_ds = DatasetClass(split_file=split_file, split_key="val", **ds_kwargs)
             if len(val_ds) == 0:
                 val_ds = None
         else:
-            # Fallback: random split
-            full_ds = FlowFragDataset(**ds_kwargs)
+            full_ds = DatasetClass(**ds_kwargs)
             val_ratio = dcfg.get("val_split", 0.05)
             n_val = int(len(full_ds) * val_ratio)
             n_train = len(full_ds) - n_val
@@ -229,6 +220,7 @@ class Trainer:
             print(train_msg)
 
         nw = dcfg.get("num_workers", 4)
+        collate_fn = unified_collate
 
         if self.world_size > 1:
             self.train_sampler = DistributedSampler(
@@ -245,15 +237,42 @@ class Trainer:
 
         self.train_loader = DataLoader(
             train_ds, batch_size=bs, shuffle=shuffle, sampler=self.train_sampler,
-            num_workers=nw, collate_fn=hetero_collate, pin_memory=True, drop_last=True,
+            num_workers=nw, collate_fn=collate_fn, pin_memory=True, drop_last=True,
         )
         if val_ds is not None:
             self.val_loader = DataLoader(
                 val_ds, batch_size=bs, shuffle=False,
-                num_workers=nw, collate_fn=hetero_collate, pin_memory=True,
+                num_workers=nw, collate_fn=collate_fn, pin_memory=True,
             )
         else:
             self.val_loader = None
+
+    @staticmethod
+    def _dict_batch_to_device(batch: dict, device: torch.device) -> dict:
+        """Move all tensors in a dict batch to device."""
+        out = {}
+        for k, v in batch.items():
+            if isinstance(v, torch.Tensor):
+                out[k] = v.to(device, non_blocking=True)
+            else:
+                out[k] = v
+        return out
+
+    def _compute_loss_unified(self, out: dict, batch: dict) -> dict:
+        """Compute flow matching loss for unified model."""
+        R_t = None
+        if self.omega_loss_frame == "body":
+            R_t = quaternion_to_matrix(batch["q_frag"])
+        return flow_matching_loss(
+            out["v_pred"], out["omega_pred"],
+            batch["v_target"], batch["omega_target"],
+            batch["frag_sizes"], omega_weight=self.omega_weight,
+            R_t=R_t,
+            omega_loss_frame=self.omega_loss_frame,
+            omega_loss_type=self.omega_loss_type,
+            omega_dir_weight=self.omega_dir_weight,
+            omega_mag_weight=self.omega_mag_weight,
+        )
 
     def _total_steps(self) -> int:
         tcfg = self.cfg["training"]
@@ -386,75 +405,10 @@ class Trainer:
                 for batch_idx, batch in enumerate(self.train_loader):
                     if overfit_mode and batch_idx >= max_batches:
                         break
-                    batch = batch.to(self.device)
-                    out = self.model(batch)
 
-                    if "v_atom_pred" in out:
-                        losses = atom_velocity_loss(
-                            out["v_atom_pred"], batch["atom"].v_target,
-                            out["v_pred"], out["omega_pred"],
-                            batch["fragment"].v_target, batch["fragment"].omega_target,
-                            batch["fragment"].size,
-                        )
-                    else:
-                        R_t = None
-                        if self.omega_loss_frame == "body":
-                            R_t = quaternion_to_matrix(batch["fragment"].q_frag)
-                        losses = flow_matching_loss(
-                            out["v_pred"], out["omega_pred"],
-                            batch["fragment"].v_target, batch["fragment"].omega_target,
-                            batch["fragment"].size, omega_weight=self.omega_weight,
-                            R_t=R_t,
-                            omega_loss_frame=self.omega_loss_frame,
-                            omega_loss_type=self.omega_loss_type,
-                            omega_dir_weight=self.omega_dir_weight,
-                            omega_mag_weight=self.omega_mag_weight,
-                        )
-                        # Atom-position auxiliary loss
-                        if self.atom_aux_weight > 0:
-                            aux = atom_position_auxiliary_loss(
-                                out["v_pred"], out["omega_pred"],
-                                batch["fragment"].v_target, batch["fragment"].omega_target,
-                                batch["atom"].pos_t, batch["fragment"].T_frag,
-                                batch["atom"].fragment_id, batch["fragment"].size,
-                            )
-                            losses["loss"] = losses["loss"] + self.atom_aux_weight * aux["loss_atom_aux"]
-                            losses["loss_atom_aux"] = aux["loss_atom_aux"].detach()
-                        # Boundary alignment loss (cut-bond velocity consistency)
-                        if self.boundary_weight > 0:
-                            try:
-                                cut_edge = batch["atom", "cut", "atom"]
-                                has_cut = hasattr(cut_edge, "edge_index") and cut_edge.edge_index.shape[1] > 0
-                            except (KeyError, AttributeError):
-                                has_cut = False
-                            if has_cut:
-                                bnd = boundary_alignment_loss(
-                                    out["v_pred"], out["omega_pred"],
-                                    batch["atom"].pos_t, batch["fragment"].T_frag,
-                                    batch["atom"].fragment_id,
-                                    cut_edge.edge_index[0], cut_edge.edge_index[1],
-                                )
-                                losses["loss"] = losses["loss"] + self.boundary_weight * bnd["loss_boundary"]
-                                losses["loss_boundary"] = bnd["loss_boundary"].detach()
-                        # Dummy atom position matching loss
-                        if self.dummy_weight > 0:
-                            d2r = batch["atom"].dummy_to_real
-                            if d2r.shape[0] > 0:
-                                # Reconstruct full-array positions from fragment poses
-                                full_frag_id = batch["atom"].dummy_fragment_id
-                                full_local = batch["atom"].dummy_local_pos
-                                R_cur = quaternion_to_matrix(batch["fragment"].q_frag)
-                                full_pos = (
-                                    torch.einsum("nij,nj->ni", R_cur[full_frag_id], full_local)
-                                    + batch["fragment"].T_frag[full_frag_id]
-                                )
-                                dum = dummy_position_loss(
-                                    out["v_pred"], out["omega_pred"],
-                                    full_pos, batch["fragment"].T_frag,
-                                    full_frag_id, d2r,
-                                )
-                                losses["loss"] = losses["loss"] + self.dummy_weight * dum["loss_dummy"]
-                                losses["loss_dummy"] = dum["loss_dummy"].detach()
+                    batch = self._dict_batch_to_device(batch, self.device)
+                    out = self.model(batch)
+                    losses = self._compute_loss_unified(out, batch)
                     raw_loss = losses["loss"]
                     if not torch.isfinite(raw_loss):
                         print(f"  WARNING: non-finite loss at E{epoch} B{batch_idx}, skipping")
@@ -590,21 +544,9 @@ class Trainer:
 
         with torch.no_grad():
             for batch in self.val_loader:
-                batch = batch.to(self.device)
+                batch = self._dict_batch_to_device(batch, self.device)
                 out = self.model(batch)
-                if "v_atom_pred" in out:
-                    losses = atom_velocity_loss(
-                        out["v_atom_pred"], batch["atom"].v_target,
-                        out["v_pred"], out["omega_pred"],
-                        batch["fragment"].v_target, batch["fragment"].omega_target,
-                        batch["fragment"].size,
-                    )
-                else:
-                    losses = flow_matching_loss(
-                        out["v_pred"], out["omega_pred"],
-                        batch["fragment"].v_target, batch["fragment"].omega_target,
-                        batch["fragment"].size, omega_weight=self.omega_weight,
-                    )
+                losses = self._compute_loss_unified(out, batch)
                 total_loss += losses["loss"].item()
                 total_v += losses["loss_v"].item()
                 total_w += losses["loss_omega"].item()
@@ -633,23 +575,101 @@ class Trainer:
         self.model.train()
         return {"val_loss": avg_loss, "val_loss_v": avg_v, "val_loss_omega": avg_w}
 
+    @torch.no_grad()
+    def _rollout_single_unified(
+        self,
+        raw_model: nn.Module,
+        sample: dict[str, torch.Tensor | str],
+        *,
+        sigma: float,
+        num_steps: int,
+        time_schedule: str,
+        schedule_power: float,
+        seed: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        from src.inference.sampler import build_time_grid
+
+        n_frag = sample["num_lig_frag"].item()
+        frag_sizes = sample["frag_sizes"].to(self.device)
+        frag_id = sample["frag_id_for_atoms"].to(self.device)
+        local_pos = sample["local_pos"].to(self.device)
+
+        gen = torch.Generator(device="cpu")
+        gen.manual_seed(seed)
+        T, q = sample_prior_poses(
+            n_frag,
+            torch.zeros(3),
+            sigma,
+            frag_sizes=frag_sizes.cpu(),
+            dtype=torch.float32,
+            generator=gen,
+        )
+        T, q = T.to(self.device), q.to(self.device)
+
+        time_grid = build_time_grid(
+            num_steps,
+            schedule=time_schedule,
+            power=schedule_power,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        batch = unified_collate([sample])
+        batch_gpu = {
+            k: v.to(self.device, non_blocking=True) if isinstance(v, torch.Tensor) else v
+            for k, v in batch.items()
+        }
+        frag_slice = batch_gpu["lig_frag_slice"][0]
+        frag_start, frag_end = frag_slice[0].item(), frag_slice[1].item()
+        atom_slice = batch_gpu["lig_atom_slice"][0]
+        atom_start = atom_slice[0].item()
+
+        for step_idx in range(num_steps):
+            t_val = time_grid[step_idx]
+            dt = time_grid[step_idx + 1] - time_grid[step_idx]
+
+            R = quaternion_to_matrix(q)
+            atom_pos = torch.einsum("nij,nj->ni", R[frag_id], local_pos) + T[frag_id]
+
+            node_coords = batch_gpu["node_coords"].clone()
+            node_coords[frag_start:frag_end] = T
+            node_coords[atom_start:atom_start + atom_pos.shape[0]] = atom_pos
+
+            batch_gpu["node_coords"] = node_coords
+            batch_gpu["T_frag"] = T
+            batch_gpu["q_frag"] = q
+            batch_gpu["frag_sizes"] = frag_sizes
+            batch_gpu["t"] = t_val.view(1, 1)
+
+            out = raw_model(batch_gpu)
+            T, q = integrate_se3_step(
+                T, q, out["v_pred"], out["omega_pred"], dt, frag_sizes=frag_sizes,
+            )
+
+        R_final = quaternion_to_matrix(q)
+        atom_pos_final = torch.einsum("nij,nj->ni", R_final[frag_id], local_pos) + T[frag_id]
+
+        R_target = quaternion_to_matrix(sample["q_target"].to(self.device))
+        true_pos = torch.einsum("nij,nj->ni", R_target[frag_id], local_pos) + sample["T_target"].to(self.device)[frag_id]
+
+        return T, atom_pos_final, true_pos
+
     def _validate_rollout(self, epoch: int) -> dict[str, float]:
         """Run ODE rollout on val set and compute docking metrics."""
         if self.val_loader is None:
             return {}
 
-        from src.inference.sampler import FlowFragSampler
         from src.inference.metrics import ligand_rmsd, centroid_distance, frag_centroid_rmsd
-        from src.geometry.se3 import quaternion_to_matrix
 
         self.model.eval()
         raw_model = self.model.module if isinstance(self.model, DDP) else self.model
 
         dcfg = self.cfg["data"]
         num_steps = self.cfg["logging"].get("rollout_steps", 20)
+        time_schedule = self.cfg["logging"].get("rollout_time_schedule", "uniform")
+        schedule_power = self.cfg["logging"].get("rollout_schedule_power", 3.0)
         sigma = dcfg.get("prior_sigma", 5.0)
-
-        sampler = FlowFragSampler(raw_model, num_steps=num_steps, translation_sigma=sigma)
+        seed_base = self.cfg["training"].get("seed", 42)
 
         rmsds, cent_dists, frag_rmsds = [], [], []
         n_done = 0
@@ -658,22 +678,20 @@ class Trainer:
         val_ds = self.val_loader.dataset
         for i in range(len(val_ds)):
             data = val_ds[i]
-            result = sampler.sample(data, device=self.device)
+            T_pred, atom_pos_pred, true_pos = self._rollout_single_unified(
+                raw_model,
+                data,
+                sigma=sigma,
+                num_steps=num_steps,
+                time_schedule=time_schedule,
+                schedule_power=schedule_power,
+                seed=seed_base + i,
+            )
+            T_target = data["T_target"].to(self.device)
 
-            # Ground-truth atom positions
-            frag_id = data["atom"].fragment_id.to(self.device)
-            local_pos = data["atom"].local_pos.to(self.device)
-            T_target = data["fragment"].T_target.to(self.device)
-            q_target = getattr(data["fragment"], "q_target", None)
-            if q_target is not None:
-                R_target = quaternion_to_matrix(q_target.to(self.device))
-                true_pos = torch.einsum("nij,nj->ni", R_target[frag_id], local_pos) + T_target[frag_id]
-            else:
-                true_pos = local_pos + T_target[frag_id]
-
-            rmsds.append(ligand_rmsd(result["atom_pos_pred"], true_pos).item())
-            cent_dists.append(centroid_distance(result["atom_pos_pred"], true_pos).item())
-            frag_rmsds.append(frag_centroid_rmsd(result["T_pred"], T_target).item())
+            rmsds.append(ligand_rmsd(atom_pos_pred, true_pos).item())
+            cent_dists.append(centroid_distance(atom_pos_pred, true_pos).item())
+            frag_rmsds.append(frag_centroid_rmsd(T_pred, T_target).item())
             n_done += 1
 
         if n_done == 0:
