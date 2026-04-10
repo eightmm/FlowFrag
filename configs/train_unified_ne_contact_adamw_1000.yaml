@@ -1,0 +1,53 @@
+model:
+  model_type: unified
+  hidden_dim: 256
+  hidden_vec_dim: 32
+  l2_dim: 16
+  l2o_dim: 16
+  num_layers: 4
+  n_rbf: 16
+  t_emb_dim: 128
+  sh_lmax: 2
+  dropout: 0.0
+  omega_mode: newton_euler
+  contact_cutoff: 4.0
+
+data:
+  data_dir: data/processed_v2
+  split_file: configs/split.json
+  min_atoms: 5
+  max_atoms: 80
+  max_frags: 20
+  prior_sigma: 1.0
+  rotation_augmentation: ligand_uniform
+  deterministic: false
+  deterministic_augmentation: true
+  deterministic_prior: false
+  deterministic_time: false
+  num_workers: 4
+
+training:
+  epochs: 1000
+  batch_size: 2
+  gradient_accumulation_steps: 16
+  use_muon: false
+  lr: 1.0e-4
+  weight_decay: 0.01
+  omega_weight: 1.0
+  max_grad_norm: 0.5
+  scheduler_type: trapezoidal
+  warmup_ratio: 0.1
+  cooldown_ratio: 0.3
+  seed: 42
+
+logging:
+  use_wandb: true
+  wandb_project: flowfrag
+  wandb_run_name: train-unified-ne-contact-adamw-1000
+  log_every: 50
+  val_every: 2500
+  rollout_every: 5000
+  rollout_steps: 25
+  rollout_time_schedule: late
+  rollout_schedule_power: 3.0
+  output_dir: outputs/train_unified_ne_contact_adamw_1000
