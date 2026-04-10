@@ -335,34 +335,50 @@ def main() -> None:
 
         try:
             mol = load_ligand(ligand_file, fmt)
-            graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, ligand_has_pose=True)
-            pocket_center = meta["pocket_center"]
-            ref_pos = lig_data["atom_coords"] - pocket_center
-
-            # --- Sample N poses (once) ---
-            raw_poses = []
-            for _ in range(args.num_samples):
-                result = sample_unified(
-                    model, graph, lig_data, meta,
-                    num_steps=args.num_steps,
-                    translation_sigma=sigma,
-                    time_schedule=args.time_schedule,
-                    schedule_power=args.schedule_power,
-                    device=device,
-                )
-                raw_poses.append(result["atom_pos_pred"])
-
-            # Save raw poses for later post-processing
             poses_dir = out_dir / "poses"
             poses_dir.mkdir(exist_ok=True)
-            torch.save({
-                "pdb_id": pdb_id,
-                "raw_poses": raw_poses,
-                "ref_pos": ref_pos,
-                "pocket_center": pocket_center,
-                "n_atoms": meta["num_atom"],
-                "n_frags": meta["num_frag"],
-            }, poses_dir / f"{pdb_id}.pt")
+            poses_file = poses_dir / f"{pdb_id}.pt"
+
+            # Resume: reuse saved poses if present and have enough samples
+            resumed = False
+            if poses_file.exists():
+                saved = torch.load(poses_file, map_location="cpu", weights_only=False)
+                if len(saved["raw_poses"]) >= args.num_samples:
+                    raw_poses = saved["raw_poses"][: args.num_samples]
+                    ref_pos = saved["ref_pos"]
+                    pocket_center = saved["pocket_center"]
+                    meta = {
+                        "num_atom": saved["n_atoms"],
+                        "num_frag": saved["n_frags"],
+                    }
+                    resumed = True
+
+            if not resumed:
+                graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, ligand_has_pose=True)
+                pocket_center = meta["pocket_center"]
+                ref_pos = lig_data["atom_coords"] - pocket_center
+
+                # --- Sample N poses (once) ---
+                raw_poses = []
+                for _ in range(args.num_samples):
+                    result = sample_unified(
+                        model, graph, lig_data, meta,
+                        num_steps=args.num_steps,
+                        translation_sigma=sigma,
+                        time_schedule=args.time_schedule,
+                        schedule_power=args.schedule_power,
+                        device=device,
+                    )
+                    raw_poses.append(result["atom_pos_pred"])
+
+                torch.save({
+                    "pdb_id": pdb_id,
+                    "raw_poses": raw_poses,
+                    "ref_pos": ref_pos,
+                    "pocket_center": pocket_center,
+                    "n_atoms": meta["num_atom"],
+                    "n_frags": meta["num_frag"],
+                }, poses_file)
 
             # --- Apply each refinement, then each selection ---
             best_rmsds_str = []
@@ -387,9 +403,10 @@ def main() -> None:
 
                 best_rmsds_str.append(f"{refine}={min(rmsds):.2f}")
 
+            tag = " [R]" if resumed else ""
             print(f"[{idx+1:3d}/{len(pdb_ids)}] {pdb_id}:  "
                   f"{'  '.join(best_rmsds_str)}  "
-                  f"atoms={meta['num_atom']:3d}  frags={meta['num_frag']:2d}")
+                  f"atoms={meta['num_atom']:3d}  frags={meta['num_frag']:2d}{tag}")
 
         except Exception as e:
             print(f"[{idx+1:3d}/{len(pdb_ids)}] {pdb_id}: FAIL ({e})")
