@@ -48,6 +48,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Claude Code
+.claude/
+CLAUDE.md
+
 # OMC artifacts
 .omc/
 *.pdf
