@@ -53,18 +53,22 @@ flowchart TB
         ES --> TP --> UP --> RES --> ALN --> RI
     end
 
-    %% ── Output ──
-    LAYER --> EXTRACT["Extract h_frag\n(fragment nodes only)"]
+    %% ── Output (Newton-Euler) ──
+    LAYER --> EXTRACT["Extract h_lig_atom\n(ligand atom nodes only)"]
 
-    EXTRACT --> VHEAD["Linear → SiLU → Linear\n→ 1×1o"]
-    EXTRACT --> WHEAD["Linear → SiLU → Linear\n→ 1×1e"]
+    EXTRACT --> FHEAD["Linear → SiLU → Linear\n→ 1×1o"]
+    FHEAD --> fatom["f_atom ∈ ℝ^(A×3)\nper-atom force"]
 
-    VHEAD --> v["v_pred ∈ ℝ^(F×3)\ntranslation velocity"]
-    WHEAD --> w["ω_pred ∈ ℝ^(F×3)\nangular velocity"]
+    fatom --> NE["Newton-Euler Aggregation"]
+    NE --> v["v = mean(f) per frag\n∈ ℝ^(F×3)"]
+    NE --> tau["τ = Σ r×f per frag"]
+    tau --> SOLVE["I·ω = τ  (inertia solve)"]
+    SOLVE --> w["ω ∈ ℝ^(F×3)"]
     w --> WMASK["Mask ω=0\nfor single-atom frags"]
 
     %% ── Styles ──
     style LAYER fill:#e8fde8,stroke:#4ad94a
+    style NE fill:#fff3e0,stroke:#e65100
     style v fill:#ddeeff,stroke:#4a90d9
     style w fill:#fde8fd,stroke:#d94ad9
     style WMASK fill:#fde8fd,stroke:#d94ad9
