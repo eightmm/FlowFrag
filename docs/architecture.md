@@ -10,86 +10,90 @@ docking.
 ## Architecture Diagram
 
 ```mermaid
-graph TD
-    subgraph Input["Input"]
-        G["Unified Graph\n574 nodes × 5024 edges"]
-        T["Time step t ∈ [0,1]"]
-        Q["Fragment rotation R_t"]
+flowchart TB
+    %% ── Inputs ──
+    IN_t["t ∈ [0,1]"] --> SIN["Sinusoidal(32)"]
+    SIN --> TMLP["MLP 32→128→128"]
+    TMLP --> t_emb["t_emb"]
+
+    IN_node["Node features\nelement, charge, aromatic,\nhybrid, ring, node_type,\namino_acid, pharmacophore"] --> NEMB["MLP 120→256→256"]
+    NEMB --> h0["h_scalar ∈ ℝ^(N×256)"]
+
+    IN_frag["Fragment sizes"] --> SEMB["Size Embedding(16)"]
+    h0 --> FINIT
+    SEMB --> FINIT
+    t_emb --> FINIT["MLP 400→256→256"]
+    FINIT --> h0_frag["h_frag (updated scalars)"]
+
+    %% ── Equivariant State ──
+    h0_frag --> GATE["Tanh gate · displacement r"]
+    GATE --> h1o["32×1o"]
+
+    IN_R["R_t (rotation)"] --> RGATE["Tanh gate · R_t columns"]
+    h0_frag --> RGATE
+    RGATE --> h1o
+
+    h1o --> CONCAT
+    h0_frag -->|"256×0e"| CONCAT
+    ZERO1["zeros"] -->|"32×1e"| CONCAT
+    ZERO2["zeros"] -->|"16×2e"| CONCAT
+    CONCAT["Concat"] --> h["h ∈ ℝ^(N×528)\n256×0e + 32×1o + 32×1e + 16×2e"]
+
+    %% ── Layer 1 ──
+    h --> L1
+
+    subgraph L1["Layer 1"]
+        direction TB
+        E1["Edge Scalars (700-dim)\nRBF(16) ⊕ edge_type(16) ⊕ bond(20)\n⊕ ref_dist(8) ⊕ h_src(256) ⊕ h_dst(256) ⊕ t(128)"]
+        T1["TP Conv (cuEquivariance)\nSH l=0,1,2 × node_irreps → node_irreps"]
+        P1["Linear → SiLU(0e) → Dropout"]
+        R1["h ← h + update"]
+        A1["AdaLN(h, t_emb)"]
+        E1 --> T1 --> P1 --> R1 --> A1
     end
 
-    subgraph Embedding["Node Embedding (scalar)"]
-        NE["UnifiedNodeEmbedding\nelement + charge + aromatic + hybrid + ring\n+ node_type + amino_acid + pharmacophore\n→ MLP(120 → 256)"]
-        TE["Time Embedding\nsinusoidal(t, 32) → MLP(32→128→128)"]
-        FE["Fragment Init\nh_scalar ⊕ size_emb(16) ⊕ t_emb\n→ MLP(400→256→256)"]
+    L1 --> RI1["R_t re-injection → frag 1o"]
+    RI1 --> L2
+
+    subgraph L2["Layer 2"]
+        direction TB
+        E2["Edge Scalars"] --> T2["TP Conv"] --> P2["Linear → SiLU → Drop"] --> R2["Residual"] --> A2["AdaLN"]
     end
 
-    subgraph VecInit["Equivariant State Init"]
-        V1O["1o init: gate(h) · displacement r\nvec_gate: Linear(256→32) + Tanh"]
-        VRT["R_t injection: gate(h) · R_cols\nfrag_rot_gate: Linear(256→96) + Tanh\n→ fragment 1o channels"]
-        V1E["1e init: zeros"]
-        V2E["2e init: zeros"]
-        CAT["Concat → h\n256×0e + 32×1o + 32×1e + 16×2e\nD = 528"]
+    L2 --> RI2["R_t re-injection → frag 1o"]
+    RI2 --> L3
+
+    subgraph L3["Layer 3"]
+        direction TB
+        E3["Edge Scalars"] --> T3["TP Conv"] --> P3["Linear → SiLU → Drop"] --> R3["Residual"] --> A3["AdaLN"]
     end
 
-    subgraph Layers["Interaction Layers ×4"]
-        subgraph Layer["UnifiedInteractionLayer"]
-            ES["Edge Scalars\nRBF(16) + edge_type(16) + bond_feats(20)\n+ ref_dist(8) + src_h(256) + dst_h(256) + t(128)\n= 700-dim"]
-            TP["SE(3) Tensor Product Conv\ncuEquivariance FCTP\nSH l=0,1,2"]
-            UP["Update: Linear → SiLU(0e) → Dropout"]
-            RES["Residual: h = h + update"]
-            ALN["AdaLN(h, t_emb)\ntime-conditioned normalization"]
-        end
-        REINJ["Per-layer R_t re-injection\ninto fragment 1o channels"]
+    L3 --> RI3["R_t re-injection → frag 1o"]
+    RI3 --> L4
+
+    subgraph L4["Layer 4"]
+        direction TB
+        E4["Edge Scalars"] --> T4["TP Conv"] --> P4["Linear → SiLU → Drop"] --> R4["Residual"] --> A4["AdaLN"]
     end
 
-    subgraph DynEdge["Dynamic Edges (optional)"]
-        DC["Contact edges: cdist ≤ cutoff\n→ edge_type = 9"]
-    end
+    %% ── Output ──
+    L4 --> EXTRACT["Extract h_frag\n(fragment nodes only)"]
 
-    subgraph Output["Output Heads"]
-        subgraph Direct["direct mode"]
-            HP["h_frag → Linear → SiLU → Linear"]
-            VP["v_pred (1o)"]
-            WP["ω_pred (1e)"]
-        end
-        subgraph NE_mode["newton_euler mode"]
-            FA["h_lig_atom → Linear → SiLU → Linear\n→ f_atom (1o)"]
-            NE2["Newton-Euler Aggregation\nv = mean(f) per frag\nτ = Σ r×f, I·ω = τ"]
-        end
-        MASK["Mask ω=0 for single-atom frags"]
-    end
+    EXTRACT --> VHEAD["Linear → SiLU → Linear\n→ 1×1o"]
+    EXTRACT --> WHEAD["Linear → SiLU → Linear\n→ 1×1e"]
 
-    G --> NE
-    T --> TE
-    NE --> FE
-    TE --> FE
-    FE --> V1O
-    FE --> VRT
-    V1O --> CAT
-    VRT --> CAT
-    V1E --> CAT
-    V2E --> CAT
+    VHEAD --> v["v_pred ∈ ℝ^(F×3)\ntranslation velocity"]
+    WHEAD --> w["ω_pred ∈ ℝ^(F×3)\nangular velocity"]
+    w --> WMASK["Mask ω=0\nfor single-atom frags"]
 
-    CAT --> Layer
-    ES --> TP
-    TP --> UP
-    UP --> RES
-    RES --> ALN
-    ALN --> REINJ
-    REINJ -->|"×4 loop"| Layer
-
-    G --> DynEdge
-    DynEdge --> ES
-
-    ALN -->|"final h"| HP
-    ALN -->|"final h"| FA
-    HP --> VP
-    HP --> WP
-    FA --> NE2
-    NE2 --> VP
-    NE2 --> WP
-    VP --> MASK
-    WP --> MASK
+    %% ── Styles ──
+    style L1 fill:#e8fde8,stroke:#4ad94a
+    style L2 fill:#e8fde8,stroke:#4ad94a
+    style L3 fill:#e8fde8,stroke:#4ad94a
+    style L4 fill:#e8fde8,stroke:#4ad94a
+    style v fill:#ddeeff,stroke:#4a90d9
+    style w fill:#fde8fd,stroke:#d94ad9
+    style WMASK fill:#fde8fd,stroke:#d94ad9
 ```
 
 ## Node Types
