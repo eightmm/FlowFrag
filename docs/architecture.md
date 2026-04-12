@@ -37,7 +37,7 @@ flowchart TB
     h0_frag -->|"256×0e"| CONCAT
     ZERO1["zeros"] -->|"32×1e"| CONCAT
     ZERO2["zeros"] -->|"16×2e"| CONCAT
-    CONCAT["Concat"] --> h["h ∈ ℝ^(N×528)\n256×0e + 32×1o + 32×1e + 16×2e"]
+    CONCAT["Concat"] --> h["h ∈ ℝ^(N×608)\n256×0e + 32×1o + 32×1e + 16×2e + 16×2o"]
 
     %% ── Layer 1 ──
     h --> L1
@@ -126,16 +126,17 @@ flowchart TB
 All nodes share the same irreps space:
 
 ```
-h = [256×0e] + [32×1o] + [32×1e] + [16×2e]
-     scalar     vector    pseudo-v   quadrupole
-     (256)      (96)      (96)       (80)
-                                     = 528 total
+h = [256×0e] + [32×1o] + [32×1e] + [16×2e] + [16×2o]
+     scalar     vector    pseudo-v   quadrupole  pseudo-q
+     (256)      (96)      (96)       (80)        (80)
+                                                 = 608 total
 ```
 
 - **0e (scalars)**: Chemical features, embeddings
 - **1o (odd vectors)**: Displacement-gated directions, forces
 - **1e (even pseudo-vectors)**: Angular velocity output channel
 - **2e (quadrupoles)**: Higher-order geometric features
+- **2o (pseudo-quadrupoles)**: Parity-odd rank-2 features
 
 ## Key Design Choices
 
