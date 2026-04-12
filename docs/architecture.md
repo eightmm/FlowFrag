@@ -39,45 +39,22 @@ flowchart TB
     ZERO2["zeros"] -->|"16×2e"| CONCAT
     CONCAT["Concat"] --> h["h ∈ ℝ^(N×608)\n256×0e + 32×1o + 32×1e + 16×2e + 16×2o"]
 
-    %% ── Layer 1 ──
-    h --> L1
+    %% ── Interaction ──
+    h --> LAYER
 
-    subgraph L1["Layer 1"]
+    subgraph LAYER["UnifiedInteractionLayer  ×4"]
         direction TB
-        E1["Edge Scalars (700-dim)\nRBF(16) ⊕ edge_type(16) ⊕ bond(20)\n⊕ ref_dist(8) ⊕ h_src(256) ⊕ h_dst(256) ⊕ t(128)"]
-        T1["TP Conv (cuEquivariance)\nSH l=0,1,2 × node_irreps → node_irreps"]
-        P1["Linear → SiLU(0e) → Dropout"]
-        R1["h ← h + update"]
-        A1["AdaLN(h, t_emb)"]
-        E1 --> T1 --> P1 --> R1 --> A1
-    end
-
-    L1 --> RI1["R_t re-injection → frag 1o"]
-    RI1 --> L2
-
-    subgraph L2["Layer 2"]
-        direction TB
-        E2["Edge Scalars"] --> T2["TP Conv"] --> P2["Linear → SiLU → Drop"] --> R2["Residual"] --> A2["AdaLN"]
-    end
-
-    L2 --> RI2["R_t re-injection → frag 1o"]
-    RI2 --> L3
-
-    subgraph L3["Layer 3"]
-        direction TB
-        E3["Edge Scalars"] --> T3["TP Conv"] --> P3["Linear → SiLU → Drop"] --> R3["Residual"] --> A3["AdaLN"]
-    end
-
-    L3 --> RI3["R_t re-injection → frag 1o"]
-    RI3 --> L4
-
-    subgraph L4["Layer 4"]
-        direction TB
-        E4["Edge Scalars"] --> T4["TP Conv"] --> P4["Linear → SiLU → Drop"] --> R4["Residual"] --> A4["AdaLN"]
+        ES["Edge Scalars (700-dim)\nRBF(16) ⊕ edge_type(16) ⊕ bond(20)\n⊕ ref_dist(8) ⊕ h_src(256) ⊕ h_dst(256) ⊕ t(128)"]
+        TP["TP Conv (cuEquivariance)\nSH l=0,1,2 × node_irreps → node_irreps"]
+        UP["Linear → SiLU(0e) → Dropout"]
+        RES["h ← h + update"]
+        ALN["AdaLN(h, t_emb)"]
+        RI["R_t re-injection → frag 1o"]
+        ES --> TP --> UP --> RES --> ALN --> RI
     end
 
     %% ── Output ──
-    L4 --> EXTRACT["Extract h_frag\n(fragment nodes only)"]
+    LAYER --> EXTRACT["Extract h_frag\n(fragment nodes only)"]
 
     EXTRACT --> VHEAD["Linear → SiLU → Linear\n→ 1×1o"]
     EXTRACT --> WHEAD["Linear → SiLU → Linear\n→ 1×1e"]
@@ -87,10 +64,7 @@ flowchart TB
     w --> WMASK["Mask ω=0\nfor single-atom frags"]
 
     %% ── Styles ──
-    style L1 fill:#e8fde8,stroke:#4ad94a
-    style L2 fill:#e8fde8,stroke:#4ad94a
-    style L3 fill:#e8fde8,stroke:#4ad94a
-    style L4 fill:#e8fde8,stroke:#4ad94a
+    style LAYER fill:#e8fde8,stroke:#4ad94a
     style v fill:#ddeeff,stroke:#4a90d9
     style w fill:#fde8fd,stroke:#d94ad9
     style WMASK fill:#fde8fd,stroke:#d94ad9
