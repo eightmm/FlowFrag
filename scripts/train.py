@@ -1,10 +1,13 @@
 """FlowFrag training entrypoint.
 
 Usage:
-    python scripts/train.py --config configs/train.yaml
-    python scripts/train.py --config configs/overfit.yaml
-    torchrun --nproc_per_node=1 scripts/train.py --config configs/train.yaml
-    python scripts/train.py --config configs/train.yaml --resume outputs/checkpoints/latest.pt
+    # 8-GPU DDP (standard):
+    torchrun --standalone --nproc_per_node=8 scripts/train.py \\
+        --config configs/train_v3_b200.yaml
+    # Resume from checkpoint:
+    torchrun --standalone --nproc_per_node=8 scripts/train.py \\
+        --config configs/train_v3_b200.yaml \\
+        --resume outputs/v3_b200/checkpoints/latest.pt
 """
 
 from __future__ import annotations

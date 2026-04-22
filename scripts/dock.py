@@ -11,12 +11,12 @@ Usage:
     # Re-docking (ligand SDF/MOL2 gives pocket center from crystal)
     python scripts/dock.py \
         --protein pocket.pdb --ligand ligand.sdf \
-        --checkpoint latest.pt --config configs/train.yaml
+        --checkpoint latest.pt --config configs/train_v3_b200.yaml
 
     # Blind docking (SMILES requires explicit pocket center)
     python scripts/dock.py \
         --protein protein.pdb --ligand "CCO" --pocket_center 12.3,-4.5,8.1 \
-        --checkpoint latest.pt --config configs/train.yaml
+        --checkpoint latest.pt --config configs/train_v3_b200.yaml
 """
 
 from __future__ import annotations

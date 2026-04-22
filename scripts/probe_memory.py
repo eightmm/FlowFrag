@@ -25,7 +25,7 @@ torch.backends.cudnn.allow_tf32 = True
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/train_v2.yaml")
+    ap.add_argument("--config", default="configs/train_v3_b200.yaml")
     ap.add_argument("--bs", type=int, nargs="+", default=[32, 48, 64, 96, 128])
     ap.add_argument("--steps", type=int, default=5, help="steps per BS")
     ap.add_argument("--preload", action="store_true")

@@ -279,7 +279,7 @@ flowfrag/
 │   ├── eval_benchmark.py                # PoseBusters / Astex / CASF evaluation
 │   ├── analyze_target_distribution.py   # T_1 distribution → prior_sigma tuning
 │   └── probe_memory.py                  # per-GPU batch-size ceiling probe
-├── configs/             # YAML configuration files (train_v3_b200.yaml, train_v2.yaml, ...)
+├── configs/             # train_v3_b200.yaml (training config used to produce `best.pt`)
 ├── data/splits/         # deterministic train/val splits (PDBbind 2020 → CASF-2016 core)
 ├── tests/               # unit tests (geometry, losses, equivariance, preprocess)
 └── docs/                # architecture & dataset reference
