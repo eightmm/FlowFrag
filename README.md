@@ -230,11 +230,11 @@ uv run torchrun --standalone --nproc_per_node=8 scripts/rollout.py \
     --config configs/train_v3_b200.yaml \
     --checkpoint outputs/v3_b200/checkpoints/best.pt
 
-# multi-prior oracle top-1 of N
-uv run torchrun --standalone --nproc_per_node=8 scripts/rollout_topN.py \
+# multi-prior oracle top-1 of N (adds `--num_priors N`)
+uv run torchrun --standalone --nproc_per_node=8 scripts/rollout.py \
     --config configs/train_v3_b200.yaml \
     --checkpoint outputs/v3_b200/checkpoints/best.pt \
-    --num_priors 10 --num_steps 25 \
+    --num_priors 10 \
     --output outputs/v3_b200/rollout_top10.json
 ```
 
@@ -271,14 +271,12 @@ flowfrag/
 │   ├── inference/       # ODE sampler, docking metrics
 │   └── scoring/         # Vina energy, PoseBusters validity, pose ranking
 ├── scripts/
-│   ├── train.py                         # main training entrypoint (DDP via torchrun)
+│   ├── train.py                         # training entrypoint (DDP via torchrun)
 │   ├── build_fragment_flow_dataset.py   # raw → processed tensors
-│   ├── rollout.py                       # standalone val rollout
-│   ├── rollout_topN.py                  # multi-prior oracle top-1 eval
+│   ├── rollout.py                       # val rollout (single or multi-prior oracle top-1)
 │   ├── dock.py                          # dock a single complex
-│   ├── eval_benchmark.py                # PoseBusters / Astex / CASF evaluation
-│   ├── analyze_target_distribution.py   # T_1 distribution → prior_sigma tuning
-│   └── probe_memory.py                  # per-GPU batch-size ceiling probe
+│   ├── eval_benchmark.py                # PoseBusters / Astex benchmark eval
+│   └── analyze_target_distribution.py   # T_1 distribution → prior_sigma tuning
 ├── configs/             # train_v3_b200.yaml (training config used to produce `best.pt`)
 ├── data/splits/         # deterministic train/val splits (PDBbind 2020 → CASF-2016 core)
 ├── tests/               # unit tests (geometry, losses, equivariance, preprocess)
