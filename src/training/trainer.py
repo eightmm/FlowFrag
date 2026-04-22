@@ -14,7 +14,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 
-from src.data.unified_dataset import UnifiedDataset, unified_collate
+from src.data.dataset import UnifiedDataset, unified_collate
 from src.geometry.flow_matching import integrate_se3_step, sample_prior_poses
 from src.models.unified import UnifiedFlowFrag
 from src.training.losses import flow_matching_loss
@@ -29,8 +29,11 @@ def setup_ddp() -> tuple[int, int, int]:
     rank = int(os.environ.get("RANK", 0))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
+    # When scripts/train.py masks CUDA_VISIBLE_DEVICES per rank (workaround for
+    # cuEquivariance DDP), each process only sees one GPU as cuda:0.
     if world_size > 1:
-        torch.cuda.set_device(local_rank)
+        cuda_idx = 0 if torch.cuda.device_count() == 1 else local_rank
+        torch.cuda.set_device(cuda_idx)
         dist.init_process_group(backend="nccl")
     return rank, local_rank, world_size
 
@@ -101,7 +104,13 @@ class Trainer:
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
         self.rank, self.local_rank, self.world_size = setup_ddp()
-        self.device = torch.device(f"cuda:{self.local_rank}" if torch.cuda.is_available() else "cpu")
+        # cuda:0 inside each rank (per-rank CUDA_VISIBLE_DEVICES) or local_rank
+        # when unmasked (e.g. single-process run with all GPUs visible).
+        if torch.cuda.is_available():
+            cuda_idx = 0 if torch.cuda.device_count() == 1 else self.local_rank
+            self.device = torch.device(f"cuda:{cuda_idx}")
+        else:
+            self.device = torch.device("cpu")
         self.is_main = self.rank == 0
 
         torch.manual_seed(cfg["training"].get("seed", 42))
@@ -119,9 +128,10 @@ class Trainer:
         model_kwargs = {k: v for k, v in cfg["model"].items() if k != "model_type"}
         self.model = UnifiedFlowFrag(**model_kwargs).to(self.device)
         if self.world_size > 1:
+            ddp_device = self.device.index
             self.model = DDP(
-                self.model, device_ids=[self.local_rank],
-                output_device=self.local_rank,
+                self.model, device_ids=[ddp_device],
+                output_device=ddp_device,
                 find_unused_parameters=False, gradient_as_bucket_view=True, static_graph=True,
             )
 
@@ -146,6 +156,19 @@ class Trainer:
             )
             for opt in self.optimizers
         ]
+        # EMA (used for val/rollout only)
+        self.use_ema = tcfg.get("use_ema", True)
+        self.ema_decay = tcfg.get("ema_decay", 0.999)
+        if self.use_ema:
+            from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+            self.ema_model = AveragedModel(
+                raw_model,
+                multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
+                use_buffers=True,
+            )
+        else:
+            self.ema_model = None
+
         self.max_grad_norm = tcfg.get("max_grad_norm", 1.0)
         self.omega_weight = tcfg.get("omega_weight", 1.0)
         self.omega_loss_frame = tcfg.get("omega_loss_frame", "world")
@@ -153,8 +176,17 @@ class Trainer:
         self.omega_dir_weight = tcfg.get("omega_dir_weight", 1.0)
         self.omega_mag_weight = tcfg.get("omega_mag_weight", 0.1)
         self.atom_aux_weight = tcfg.get("atom_aux_weight", 0.0)
+        self.dg_weight = tcfg.get("dg_weight", 0.0)
+
+        # Mixed precision: disabled by default because cuEquivariance's
+        # fused_tp kernels only support FP32 inputs (they raise on BF16).
+        # TF32 is enabled globally in scripts/train.py and already accelerates
+        # the scalar path of the model.
+        self.use_amp = tcfg.get("use_amp", False)
+        self.amp_dtype = torch.bfloat16
         self.boundary_weight = tcfg.get("boundary_weight", 0.0)
         self.dummy_weight = tcfg.get("dummy_weight", 0.0)
+        self.use_time_weighting = tcfg.get("use_time_weighting", True)
 
         # Wandb (initialized lazily after potential checkpoint load)
         self.use_wandb = cfg["logging"].get("use_wandb", False) and self.is_main
@@ -172,26 +204,31 @@ class Trainer:
         bs = tcfg["batch_size"]
         ds_kwargs = dict(
             root=dcfg["data_dir"],
-            translation_sigma=dcfg.get("prior_sigma", 10.0),
+            pocket_cutoff=dcfg.get("pocket_cutoff", 8.0),
+            pocket_jitter_sigma=dcfg.get("pocket_jitter_sigma", 0.0),
+            pocket_cutoff_noise=dcfg.get("pocket_cutoff_noise", 0.0),
+            translation_sigma=dcfg.get("prior_sigma", 5.0),
             max_atoms=dcfg.get("max_atoms", 80),
             max_frags=dcfg.get("max_frags", 20),
             min_atoms=dcfg.get("min_atoms", 5),
+            min_protein_res=dcfg.get("min_protein_res", 50),
             rotation_augmentation=dcfg.get("rotation_augmentation", "none"),
             deterministic=dcfg.get("deterministic", False),
-            deterministic_augmentation=dcfg.get("deterministic_augmentation"),
-            deterministic_prior=dcfg.get("deterministic_prior"),
-            deterministic_time=dcfg.get("deterministic_time"),
-            prior_bank_size=dcfg.get("prior_bank_size", 1),
-            time_bank_size=dcfg.get("time_bank_size", 1),
             seed=tcfg.get("seed", 42),
         )
 
         split_file = dcfg.get("split_file")
         DatasetClass = UnifiedDataset
 
+        # Val dataset: no augmentation, no jitter (deterministic crystal eval)
+        val_kwargs = dict(ds_kwargs)
+        val_kwargs["rotation_augmentation"] = "none"
+        val_kwargs["pocket_jitter_sigma"] = 0.0
+        val_kwargs["pocket_cutoff_noise"] = 0.0
+
         if split_file is not None:
             train_ds = DatasetClass(split_file=split_file, split_key="train", **ds_kwargs)
-            val_ds = DatasetClass(split_file=split_file, split_key="val", **ds_kwargs)
+            val_ds = DatasetClass(split_file=split_file, split_key="val", **val_kwargs)
             if len(val_ds) == 0:
                 val_ds = None
         else:
@@ -235,17 +272,30 @@ class Trainer:
             self.train_sampler = None
             shuffle = not overfit_mode
 
+        loader_kwargs = dict(
+            collate_fn=collate_fn, pin_memory=True,
+            persistent_workers=nw > 0,
+            prefetch_factor=4 if nw > 0 else None,
+        )
         self.train_loader = DataLoader(
             train_ds, batch_size=bs, shuffle=shuffle, sampler=self.train_sampler,
-            num_workers=nw, collate_fn=collate_fn, pin_memory=True, drop_last=True,
+            num_workers=nw, drop_last=True, **loader_kwargs,
         )
         if val_ds is not None:
+            if self.world_size > 1:
+                self.val_sampler = DistributedSampler(
+                    val_ds, num_replicas=self.world_size, rank=self.rank,
+                    shuffle=False, drop_last=False,
+                )
+            else:
+                self.val_sampler = None
             self.val_loader = DataLoader(
-                val_ds, batch_size=bs, shuffle=False,
-                num_workers=nw, collate_fn=collate_fn, pin_memory=True,
+                val_ds, batch_size=bs, shuffle=False, sampler=self.val_sampler,
+                num_workers=nw, **loader_kwargs,
             )
         else:
             self.val_loader = None
+            self.val_sampler = None
 
     @staticmethod
     def _dict_batch_to_device(batch: dict, device: torch.device) -> dict:
@@ -260,10 +310,25 @@ class Trainer:
 
     def _compute_loss_unified(self, out: dict, batch: dict) -> dict:
         """Compute flow matching loss for unified model."""
+        from src.training.losses import (
+            compute_time_weight,
+            atom_position_auxiliary_loss,
+            distance_geometry_loss,
+            boundary_alignment_loss,
+        )
+
         R_t = None
         if self.omega_loss_frame == "body":
             R_t = quaternion_to_matrix(batch["q_frag"])
-        return flow_matching_loss(
+
+        # Per-fragment time weight
+        if self.use_time_weighting:
+            t_per_frag = batch["t"].view(-1)[batch["frag_batch"]]  # [N_frag]
+            time_weight = compute_time_weight(t_per_frag)
+        else:
+            time_weight = None
+
+        losses = flow_matching_loss(
             out["v_pred"], out["omega_pred"],
             batch["v_target"], batch["omega_target"],
             batch["frag_sizes"], omega_weight=self.omega_weight,
@@ -272,12 +337,65 @@ class Trainer:
             omega_loss_type=self.omega_loss_type,
             omega_dir_weight=self.omega_dir_weight,
             omega_mag_weight=self.omega_mag_weight,
+            time_weight=time_weight,
+            P_observable=out.get("P_observable"),
         )
 
+        # Atom-level auxiliary loss: v_atom = v_frag + omega × r
+        if self.atom_aux_weight > 0:
+            aux = atom_position_auxiliary_loss(
+                out["v_pred"], out["omega_pred"],
+                batch["v_target"], batch["omega_target"],
+                atom_pos_t=batch["atom_pos_t"],
+                T_frag=batch["T_frag"],
+                fragment_id=batch["frag_id_for_atoms"],
+                frag_sizes=batch["frag_sizes"],
+            )
+            losses["loss"] = losses["loss"] + self.atom_aux_weight * aux["loss_atom_aux"]
+            losses["loss_atom_aux"] = aux["loss_atom_aux"].detach()
+
+        # Distance geometry loss: one-step Euler → pairwise distance MSE
+        # (weighted by t² — strict near t=1, loose near t=0)
+        if self.dg_weight > 0:
+            dg = distance_geometry_loss(
+                v_pred=out["v_pred"],
+                omega_pred=out["omega_pred"],
+                T_t=batch["T_frag"],
+                q_t=batch["q_frag"],
+                t_per_sample=batch["t"],
+                frag_batch=batch["frag_batch"],
+                T_target=batch["T_target"],
+                q_target=batch["q_target"],
+                local_pos=batch["local_pos"],
+                frag_id_for_atoms=batch["frag_id_for_atoms"],
+                atom_batch=batch["atom_batch"],
+                lig_atom_slice=batch["lig_atom_slice"],
+                lig_frag_slice=batch["lig_frag_slice"],
+            )
+            losses["loss"] = losses["loss"] + self.dg_weight * dg["loss_dg"]
+            losses["loss_dg"] = dg["loss_dg"].detach()
+
+        # Boundary alignment loss: cut-bond atom velocities should agree
+        if self.boundary_weight > 0 and "cut_bond_src" in batch:
+            bnd = boundary_alignment_loss(
+                v_pred=out["v_pred"],
+                omega_pred=out["omega_pred"],
+                atom_pos_t=batch["atom_pos_t"],
+                T_frag=batch["T_frag"],
+                fragment_id=batch["frag_id_for_atoms"],
+                cut_src=batch["cut_bond_src"],
+                cut_dst=batch["cut_bond_dst"],
+            )
+            losses["loss"] = losses["loss"] + self.boundary_weight * bnd["loss_boundary"]
+            losses["loss_boundary"] = bnd["loss_boundary"].detach()
+
+        return losses
+
     def _total_steps(self) -> int:
+        """Total optimizer steps from config (step-based schedule)."""
         tcfg = self.cfg["training"]
-        steps_per_epoch = max(len(self.train_loader) // self.grad_accum, 1)
-        return steps_per_epoch * tcfg["epochs"]
+        assert "max_steps" in tcfg, "config must specify training.max_steps"
+        return int(tcfg["max_steps"])
 
     # ---- Checkpoint ----
 
@@ -285,6 +403,8 @@ class Trainer:
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         raw_model = self.model.module if isinstance(self.model, DDP) else self.model
         raw_model.load_state_dict(ckpt["model_state_dict"])
+        if self.ema_model is not None and "ema_state_dict" in ckpt:
+            self.ema_model.load_state_dict(ckpt["ema_state_dict"])
         for opt, opt_sd in zip(self.optimizers, ckpt.get("optimizer_state_dicts", [])):
             opt.load_state_dict(opt_sd)
         for sched, sched_sd in zip(self.schedulers, ckpt.get("scheduler_state_dicts", [])):
@@ -297,7 +417,7 @@ class Trainer:
 
     def _build_checkpoint_state(self, epoch: int, metrics: dict) -> dict:
         raw_model = self.model.module if isinstance(self.model, DDP) else self.model
-        return {
+        state = {
             "epoch": epoch,
             "step": self.global_step,
             "model_state_dict": raw_model.state_dict(),
@@ -306,6 +426,9 @@ class Trainer:
             "metrics": metrics,
             "wandb_run_id": self.wandb_run_id,
         }
+        if self.ema_model is not None:
+            state["ema_state_dict"] = self.ema_model.state_dict()
+        return state
 
     def _save_latest(self, epoch: int, metrics: dict) -> None:
         """Save latest.pt (overwritten every val). Used for resume."""
@@ -375,17 +498,21 @@ class Trainer:
         rollout_every = lcfg.get("rollout_every", 0)
         overfit_mode = tcfg.get("overfit_batches", 0) > 0
 
+        total_steps = self._total_steps()
         if self.is_main:
-            print(f"Training: {tcfg['epochs']} epochs, {len(self.train_loader)} batches/epoch")
+            print(f"Training: total_steps={total_steps}, {len(self.train_loader)} batches/data_pass")
             print(f"  grad_accum={self.grad_accum}, effective_bs={tcfg['batch_size'] * self.grad_accum}")
 
+        # data_pass = one full iteration through the train dataset (was called
+        # "epoch" before we moved to step-based). Used for DistributedSampler
+        # seeding and log grouping.
         epoch = self.start_epoch
         epoch_loss = 0.0
         epoch_steps = 0
         avg_loss = 0.0
 
         try:
-            for epoch in range(self.start_epoch, tcfg["epochs"]):
+            while self.global_step < total_steps:
                 if self.train_sampler is not None:
                     self.train_sampler.set_epoch(epoch)
 
@@ -407,7 +534,8 @@ class Trainer:
                         break
 
                     batch = self._dict_batch_to_device(batch, self.device)
-                    out = self.model(batch)
+                    with torch.autocast(device_type="cuda", dtype=self.amp_dtype, enabled=self.use_amp):
+                        out = self.model(batch)
                     losses = self._compute_loss_unified(out, batch)
                     raw_loss = losses["loss"]
                     if not torch.isfinite(raw_loss):
@@ -428,6 +556,18 @@ class Trainer:
                         for sched in self.schedulers:
                             sched.step()
                         self.global_step += 1
+                        if self.ema_model is not None:
+                            raw = self.model.module if isinstance(self.model, DDP) else self.model
+                            self.ema_model.update_parameters(raw)
+                        if self.global_step >= total_steps:
+                            # Final val + rollout before exiting
+                            if val_every > 0:
+                                val_metrics = self._validate(epoch)
+                                self._save_latest(epoch, {"train_loss": epoch_loss / max(epoch_steps, 1), **val_metrics})
+                            if rollout_every > 0:
+                                rollout_metrics = self._validate_rollout(epoch)
+                                self._save_rollout(epoch, {"train_loss": epoch_loss / max(epoch_steps, 1), **rollout_metrics})
+                            break
                     else:
                         grad_norm = None
 
@@ -439,11 +579,17 @@ class Trainer:
                     epoch_cos_w += losses["cos_omega"].item()
                     epoch_steps += 1
 
-                    # Logging
-                    if self.is_main and log_every > 0 and (batch_idx + 1) % log_every == 0:
+                    # Logging (triggered on optimizer step boundaries)
+                    log_trigger = (
+                        self.is_main
+                        and log_every > 0
+                        and grad_norm is not None  # optimizer step just happened
+                        and self.global_step % log_every == 0
+                    )
+                    if log_trigger:
                         avg = epoch_loss / epoch_steps
                         lr_vals = [opt.param_groups[0]["lr"] for opt in self.optimizers]
-                        print(f"  [E{epoch} B{batch_idx+1}] loss={step_loss:.4f} avg={avg:.4f} "
+                        print(f"  [S{self.global_step}] loss={step_loss:.4f} avg={avg:.4f} "
                               f"loss_v={losses['loss_v'].item():.4f} loss_w={losses['loss_omega'].item():.4f} "
                               f"lr={lr_vals}")
                         if self.use_wandb:
@@ -461,7 +607,7 @@ class Trainer:
                                 log_dict["meta/lr_muon"] = lr_vals[0]
                             if grad_norm is not None:
                                 log_dict["step/grad_norm"] = grad_norm
-                            for extra_key in ("loss_omega_dir", "loss_omega_mag", "loss_atom_aux", "cos_omega_world"):
+                            for extra_key in ("loss_omega_dir", "loss_omega_mag", "loss_atom_aux", "loss_dg", "loss_boundary", "cos_omega_world"):
                                 if extra_key in losses:
                                     log_dict[f"step/{extra_key}"] = losses[extra_key].item()
                             wandb.log(log_dict, step=self.global_step)
@@ -499,15 +645,8 @@ class Trainer:
                         cw = epoch_cos_w / epoch_steps
                         print(f"Epoch {epoch} done: loss={avg_loss:.4f} v={avg_v:.4f} w={avg_w:.4f} "
                               f"cos_v={cv:.3f} cos_w={cw:.3f} ({elapsed:.1f}s)")
-                        if self.use_wandb:
-                            import wandb
-                            wandb.log({
-                                "epoch/loss": avg_loss,
-                                "epoch/loss_v": avg_v,
-                                "epoch/loss_omega": avg_w,
-                                "epoch/cos_v": cv,
-                                "epoch/cos_omega": cw,
-                            }, step=self.global_step)
+                        # Epoch-level wandb logging removed — step-level (every 50 steps)
+                        # provides finer granularity; epoch averages add chart clutter.
                     else:
                         avg_loss = float("nan")
                         print(f"Epoch {epoch}: ALL BATCHES SKIPPED ({elapsed:.1f}s)")
@@ -515,9 +654,11 @@ class Trainer:
                 if overfit_mode and self.is_main and (epoch + 1) % 50 == 0:
                     self._save_latest(epoch, {"train_loss": avg_loss})
 
+                epoch += 1
+
             # Final save
             if self.is_main:
-                self._save_latest(tcfg["epochs"] - 1, {"train_loss": avg_loss})
+                self._save_latest(epoch, {"train_loss": avg_loss})
                 print("Training complete.")
 
         except KeyboardInterrupt:
@@ -532,11 +673,18 @@ class Trainer:
 
     # ---- Validation ----
 
+    def _eval_model(self) -> nn.Module:
+        """Return EMA model for evaluation if enabled, else unwrapped live model."""
+        if self.ema_model is not None:
+            return self.ema_model
+        return self.model.module if isinstance(self.model, DDP) else self.model
+
     def _validate(self, epoch: int) -> dict[str, float]:
         if self.val_loader is None:
             return {}
 
-        self.model.eval()
+        em = self._eval_model()
+        em.train(False)
         total_loss = 0.0
         total_v = 0.0
         total_w = 0.0
@@ -545,7 +693,8 @@ class Trainer:
         with torch.no_grad():
             for batch in self.val_loader:
                 batch = self._dict_batch_to_device(batch, self.device)
-                out = self.model(batch)
+                with torch.autocast(device_type="cuda", dtype=self.amp_dtype, enabled=self.use_amp):
+                    out = em(batch)
                 losses = self._compute_loss_unified(out, batch)
                 total_loss += losses["loss"].item()
                 total_v += losses["loss_v"].item()
@@ -641,7 +790,8 @@ class Trainer:
             batch_gpu["frag_sizes"] = frag_sizes
             batch_gpu["t"] = t_val.view(1, 1)
 
-            out = raw_model(batch_gpu)
+            with torch.autocast(device_type="cuda", dtype=self.amp_dtype, enabled=self.use_amp):
+                out = raw_model(batch_gpu)
             T, q = integrate_se3_step(
                 T, q, out["v_pred"], out["omega_pred"], dt, frag_sizes=frag_sizes,
             )
@@ -661,22 +811,28 @@ class Trainer:
 
         from src.inference.metrics import ligand_rmsd, centroid_distance, frag_centroid_rmsd
 
-        self.model.eval()
-        raw_model = self.model.module if isinstance(self.model, DDP) else self.model
+        raw_model = self._eval_model()
+        raw_model.train(False)
 
         dcfg = self.cfg["data"]
-        num_steps = self.cfg["logging"].get("rollout_steps", 20)
-        time_schedule = self.cfg["logging"].get("rollout_time_schedule", "uniform")
-        schedule_power = self.cfg["logging"].get("rollout_schedule_power", 3.0)
+        lcfg = self.cfg["logging"]
+        num_steps = lcfg.get("rollout_steps", 20)
+        time_schedule = lcfg.get("rollout_time_schedule", "uniform")
+        schedule_power = lcfg.get("rollout_schedule_power", 3.0)
+        max_samples = lcfg.get("rollout_max_samples", 0)  # 0 = full val set
         sigma = dcfg.get("prior_sigma", 5.0)
         seed_base = self.cfg["training"].get("seed", 42)
 
         rmsds, cent_dists, frag_rmsds = [], [], []
         n_done = 0
 
-        # Iterate over full val dataset
+        # Iterate over val dataset (optionally capped by rollout_max_samples).
+        # Under DDP each rank handles indices[rank::world_size] (disjoint
+        # partition, no duplication) — then all_gather below assembles the
+        # full metric arrays.
         val_ds = self.val_loader.dataset
-        for i in range(len(val_ds)):
+        n_val = len(val_ds) if max_samples <= 0 else min(len(val_ds), max_samples)
+        for i in range(self.rank, n_val, self.world_size):
             data = val_ds[i]
             T_pred, atom_pos_pred, true_pos = self._rollout_single_unified(
                 raw_model,
@@ -693,6 +849,14 @@ class Trainer:
             cent_dists.append(centroid_distance(atom_pos_pred, true_pos).item())
             frag_rmsds.append(frag_centroid_rmsd(T_pred, T_target).item())
             n_done += 1
+
+        if self.world_size > 1:
+            gathered: list[tuple[list, list, list]] = [None] * self.world_size  # type: ignore
+            dist.all_gather_object(gathered, (rmsds, cent_dists, frag_rmsds))
+            rmsds = [x for shard in gathered for x in shard[0]]
+            cent_dists = [x for shard in gathered for x in shard[1]]
+            frag_rmsds = [x for shard in gathered for x in shard[2]]
+            n_done = len(rmsds)
 
         if n_done == 0:
             self.model.train()

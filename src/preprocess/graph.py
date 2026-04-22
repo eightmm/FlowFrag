@@ -1,237 +1,202 @@
-"""Static unified graph construction for protein-ligand complexes."""
+"""Static unified graph construction for protein-ligand complexes.
+
+Node schema (four types):
+    ligand_atom, ligand_fragment, protein_atom, protein_res
+
+Protein chemistry comes from a single ``patom_token`` (the ``(residue, atom)``
+identity); ligand atoms keep their multi-feature chemistry. All per-node
+tensors stay concatenated in a fixed order; non-applicable slots are padded
+with sentinel values so downstream code can safely index the whole tensor and
+gate by ``node_type``.
+"""
+
+from collections import deque
 
 import torch
 
-from .ligand import OTHER_BOND_IDX, OTHER_ELEMENT_IDX, OTHER_HYBRID_IDX
-from .protein import UNK_IDX
+from .ligand import OTHER_ELEMENT_IDX, OTHER_HYBRID_IDX
+from .protein import UNK_ATOM_TOKEN, UNK_RES_IDX
 
 
-EDGE_TYPES = {
+EDGE_TYPES: dict[str, int] = {
     "ligand_bond": 0,
     "ligand_tri": 1,
     "ligand_cut": 2,
     "ligand_atom_frag": 3,
     "ligand_frag_frag": 4,
     "protein_bond": 5,
-    "protein_atom_ca": 6,
-    "protein_ca_ca": 7,
-    "protein_ca_frag": 8,
+    "protein_atom_res": 6,
+    "protein_res_res": 7,
+    "protein_res_frag": 8,
 }
 
-NODE_TYPES = {
+NODE_TYPES: dict[str, int] = {
     "ligand_atom": 0,
-    "ligand_dummy": 1,
-    "ligand_fragment": 2,
-    "protein_atom": 3,
-    "protein_ca": 4,
+    "ligand_fragment": 1,
+    "protein_atom": 2,
+    "protein_res": 3,
 }
+
+DYNAMIC_EDGE_TYPES: set[int] = {
+    EDGE_TYPES["ligand_frag_frag"],
+    EDGE_TYPES["protein_res_frag"],
+}
+
+
+def _frag_hop_distances(n_frag: int, adj_index: torch.Tensor) -> torch.Tensor:
+    """BFS shortest path between all fragment pairs.
+
+    Returns [n_frag, n_frag] int tensor. Self-distance = 0,
+    unreachable = n_frag (sentinel).
+    """
+    adj: list[list[int]] = [[] for _ in range(n_frag)]
+    for k in range(adj_index.shape[1]):
+        s, d = int(adj_index[0, k]), int(adj_index[1, k])
+        adj[s].append(d)
+
+    dist = torch.full((n_frag, n_frag), n_frag, dtype=torch.int64)
+    for src in range(n_frag):
+        dist[src, src] = 0
+        q: deque[int] = deque([src])
+        while q:
+            u = q.popleft()
+            for v in adj[u]:
+                if dist[src, v] > dist[src, u] + 1:
+                    dist[src, v] = dist[src, u] + 1
+                    q.append(v)
+    return dist
 
 
 def build_static_complex_graph(
     lig_data: dict[str, torch.Tensor],
     patom_data: dict[str, torch.Tensor],
-    pca_cutoff: float = 18.0,
+    pres_cutoff: float = 10.0,
 ) -> dict[str, torch.Tensor]:
     """Build a unified static graph for one complex.
 
-    Only protein-ligand interaction edges are intentionally left out so they can
-    be rebuilt dynamically from the current diffusion state.
+    Protein-ligand interaction edges are intentionally left out so they can be
+    rebuilt dynamically from the current flow-matching state.
     """
     lig_atom_coords = lig_data["atom_coords"]
     frag_coords = lig_data["frag_centers"]
     prot_atom_coords = patom_data["patom_coords"]
-    pca_coords = patom_data["pca_coords"]
+    pres_coords = patom_data["pres_coords"]
 
     n_lig_atom = lig_atom_coords.shape[0]
     n_frag = frag_coords.shape[0]
     n_prot_atom = prot_atom_coords.shape[0]
-    n_pca = pca_coords.shape[0]
-    pca_residue_id = patom_data["patom_residue_id"][patom_data["pca_atom_index"]]
+    n_pres = pres_coords.shape[0]
+
+    # Residue virtual nodes inherit their residue_id from the atom they refer
+    # to (CB, pseudo-CB with CA sentinel, or metal atom).
+    pres_residue_id = patom_data["patom_residue_id"][patom_data["pres_atom_index"]]
 
     frag_offset = n_lig_atom
     prot_atom_offset = frag_offset + n_frag
-    pca_offset = prot_atom_offset + n_prot_atom
+    pres_offset = prot_atom_offset + n_prot_atom
 
-    node_coords = torch.cat([lig_atom_coords, frag_coords, prot_atom_coords, pca_coords], dim=0)
+    node_coords = torch.cat(
+        [lig_atom_coords, frag_coords, prot_atom_coords, pres_coords], dim=0
+    )
     total_nodes = node_coords.shape[0]
 
-    ligand_is_dummy = lig_data.get("is_dummy", torch.zeros(n_lig_atom, dtype=torch.bool))
-    ligand_node_type = torch.full((n_lig_atom,), NODE_TYPES["ligand_atom"], dtype=torch.int64)
-    ligand_node_type[ligand_is_dummy] = NODE_TYPES["ligand_dummy"]
+    # --- Node type -----------------------------------------------------------
+    node_type = torch.cat([
+        torch.full((n_lig_atom,), NODE_TYPES["ligand_atom"], dtype=torch.int64),
+        torch.full((n_frag,), NODE_TYPES["ligand_fragment"], dtype=torch.int64),
+        torch.full((n_prot_atom,), NODE_TYPES["protein_atom"], dtype=torch.int64),
+        torch.full((n_pres,), NODE_TYPES["protein_res"], dtype=torch.int64),
+    ], dim=0)
 
-    frag_node_type = torch.full((n_frag,), NODE_TYPES["ligand_fragment"], dtype=torch.int64)
-    prot_atom_node_type = torch.full((n_prot_atom,), NODE_TYPES["protein_atom"], dtype=torch.int64)
-    pca_node_type = torch.full((n_pca,), NODE_TYPES["protein_ca"], dtype=torch.int64)
-    node_type = torch.cat(
-        [ligand_node_type, frag_node_type, prot_atom_node_type, pca_node_type], dim=0
-    )
+    # --- Ligand chemistry features (padded for non-ligand slots) -------------
+    def _ligand_pad_int64(key: str, pad: int) -> torch.Tensor:
+        return torch.cat(
+            [
+                lig_data[key].to(torch.int64),
+                torch.full((n_frag,), pad, dtype=torch.int64),
+                torch.full((n_prot_atom,), pad, dtype=torch.int64),
+                torch.full((n_pres,), pad, dtype=torch.int64),
+            ]
+        )
 
-    node_element = torch.cat(
+    def _ligand_pad_int8(key: str, pad: int) -> torch.Tensor:
+        return torch.cat(
+            [
+                lig_data[key].to(torch.int8),
+                torch.full((n_frag,), pad, dtype=torch.int8),
+                torch.full((n_prot_atom,), pad, dtype=torch.int8),
+                torch.full((n_pres,), pad, dtype=torch.int8),
+            ]
+        )
+
+    def _ligand_pad_bool(key: str) -> torch.Tensor:
+        return torch.cat(
+            [
+                lig_data[key].to(torch.bool),
+                torch.zeros(n_frag, dtype=torch.bool),
+                torch.zeros(n_prot_atom, dtype=torch.bool),
+                torch.zeros(n_pres, dtype=torch.bool),
+            ]
+        )
+
+    node_element = _ligand_pad_int64("atom_element", OTHER_ELEMENT_IDX)
+    node_charge = _ligand_pad_int8("atom_charge", 0)
+    node_aromatic = _ligand_pad_bool("atom_aromatic")
+    node_hybridization = _ligand_pad_int8("atom_hybridization", OTHER_HYBRID_IDX)
+    node_degree = _ligand_pad_int8("atom_degree", 0)
+    node_implicit_valence = _ligand_pad_int8("atom_implicit_valence", 0)
+    node_explicit_valence = _ligand_pad_int8("atom_explicit_valence", 0)
+    node_num_rings = _ligand_pad_int8("atom_num_rings", 0)
+    node_chirality = _ligand_pad_int8("atom_chirality", 0)
+    node_is_donor = _ligand_pad_bool("atom_is_donor")
+    node_is_acceptor = _ligand_pad_bool("atom_is_acceptor")
+    node_is_positive = _ligand_pad_bool("atom_is_positive")
+    node_is_negative = _ligand_pad_bool("atom_is_negative")
+    node_is_hydrophobe = _ligand_pad_bool("atom_is_hydrophobe")
+
+    # --- Protein-atom features (padded for non-protein slots) ----------------
+    node_patom_token = torch.cat(
         [
-            lig_data["atom_element"],
-            torch.full((n_frag,), OTHER_ELEMENT_IDX, dtype=torch.int64),
-            patom_data["patom_element"],
-            torch.full((n_pca,), OTHER_ELEMENT_IDX, dtype=torch.int64),
+            torch.full((n_lig_atom,), UNK_ATOM_TOKEN, dtype=torch.int64),
+            torch.full((n_frag,), UNK_ATOM_TOKEN, dtype=torch.int64),
+            patom_data["patom_token"],
+            torch.full((n_pres,), UNK_ATOM_TOKEN, dtype=torch.int64),
         ]
     )
-    node_charge = torch.cat(
-        [
-            lig_data["atom_charge"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_charge"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_aromatic = torch.cat(
-        [
-            lig_data["atom_aromatic"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_aromatic"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_hybridization = torch.cat(
-        [
-            lig_data["atom_hybridization"],
-            torch.full((n_frag,), OTHER_HYBRID_IDX, dtype=torch.int8),
-            patom_data["patom_hybridization"],
-            torch.full((n_pca,), OTHER_HYBRID_IDX, dtype=torch.int8),
-        ]
-    )
-    node_in_ring = torch.cat(
-        [
-            lig_data["atom_in_ring"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_in_ring"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_degree = torch.cat(
-        [
-            lig_data["atom_degree"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_degree"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_implicit_valence = torch.cat(
-        [
-            lig_data["atom_implicit_valence"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_implicit_valence"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_explicit_valence = torch.cat(
-        [
-            lig_data["atom_explicit_valence"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_explicit_valence"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_num_rings = torch.cat(
-        [
-            lig_data["atom_num_rings"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_num_rings"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_chirality = torch.cat(
-        [
-            lig_data["atom_chirality"],
-            torch.zeros(n_frag, dtype=torch.int8),
-            patom_data["patom_chirality"],
-            torch.zeros(n_pca, dtype=torch.int8),
-        ]
-    )
-    node_is_donor = torch.cat(
-        [
-            lig_data["atom_is_donor"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_donor"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_acceptor = torch.cat(
-        [
-            lig_data["atom_is_acceptor"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_acceptor"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_positive = torch.cat(
-        [
-            lig_data["atom_is_positive"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_positive"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_negative = torch.cat(
-        [
-            lig_data["atom_is_negative"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_negative"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_hydrophobe = torch.cat(
-        [
-            lig_data["atom_is_hydrophobe"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_hydrophobe"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_halogen = torch.cat(
-        [
-            lig_data["atom_is_halogen"],
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_halogen"],
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_amino_acid = torch.cat(
-        [
-            torch.full((n_lig_atom,), UNK_IDX, dtype=torch.int64),
-            torch.full((n_frag,), UNK_IDX, dtype=torch.int64),
-            patom_data["patom_amino_acid"],
-            patom_data["pca_res_type"],
-        ]
-    )
-    node_is_backbone = torch.cat(
+    node_patom_is_metal = torch.cat(
         [
             torch.zeros(n_lig_atom, dtype=torch.bool),
             torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_backbone"],
-            torch.zeros(n_pca, dtype=torch.bool),
+            patom_data["patom_is_metal"],
+            torch.zeros(n_pres, dtype=torch.bool),
         ]
     )
-    node_is_ca = torch.cat(
+
+    # --- Residue virtual node features (padded for non-virtual slots) --------
+    node_pres_residue_type = torch.cat(
+        [
+            torch.full((n_lig_atom,), UNK_RES_IDX, dtype=torch.int64),
+            torch.full((n_frag,), UNK_RES_IDX, dtype=torch.int64),
+            torch.full((n_prot_atom,), UNK_RES_IDX, dtype=torch.int64),
+            patom_data["pres_residue_type"],
+        ]
+    )
+    node_pres_is_pseudo = torch.cat(
         [
             torch.zeros(n_lig_atom, dtype=torch.bool),
             torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_ca"],
-            torch.ones(n_pca, dtype=torch.bool),
+            torch.zeros(n_prot_atom, dtype=torch.bool),
+            patom_data["pres_is_pseudo"],
         ]
     )
-    node_ca_dist = torch.cat(
-        [
-            torch.zeros(n_lig_atom, dtype=torch.int64),
-            torch.zeros(n_frag, dtype=torch.int64),
-            patom_data["patom_ca_dist"],
-            torch.zeros(n_pca, dtype=torch.int64),
-        ]
-    )
+
+    # --- Shared structural fields --------------------------------------------
     node_fragment_id = torch.cat(
         [
             lig_data["fragment_id"],
             torch.arange(n_frag, dtype=torch.int64),
             torch.full((n_prot_atom,), -1, dtype=torch.int64),
-            torch.full((n_pca,), -1, dtype=torch.int64),
+            torch.full((n_pres,), -1, dtype=torch.int64),
         ]
     )
     node_residue_id = torch.cat(
@@ -239,25 +204,13 @@ def build_static_complex_graph(
             torch.full((n_lig_atom,), -1, dtype=torch.int64),
             torch.full((n_frag,), -1, dtype=torch.int64),
             patom_data["patom_residue_id"],
-            pca_residue_id,
+            pres_residue_id,
         ]
     )
-    node_is_dummy = torch.cat(
-        [
-            ligand_is_dummy,
-            torch.zeros(n_frag, dtype=torch.bool),
-            torch.zeros(n_prot_atom, dtype=torch.bool),
-            torch.zeros(n_pca, dtype=torch.bool),
-        ]
-    )
-    node_is_virtual = torch.cat(
-        [
-            torch.zeros(n_lig_atom, dtype=torch.bool),
-            torch.ones(n_frag, dtype=torch.bool),
-            torch.zeros(n_prot_atom, dtype=torch.bool),
-            torch.ones(n_pca, dtype=torch.bool),
-        ]
-    )
+
+    # --- Edge assembly -------------------------------------------------------
+    # Precompute fragment hop distances for frag_frag edge features
+    frag_hop_mat = _frag_hop_distances(n_frag, lig_data["fragment_adj_index"])
 
     edge_src: list[int] = []
     edge_dst: list[int] = []
@@ -267,6 +220,7 @@ def build_static_complex_graph(
     edge_bond_conjugated: list[bool] = []
     edge_bond_in_ring: list[bool] = []
     edge_bond_stereo: list[int] = []
+    edge_frag_hop: list[int] = []
 
     def add_edges(
         src: torch.Tensor,
@@ -277,10 +231,13 @@ def build_static_complex_graph(
         bond_conj: torch.Tensor | None = None,
         bond_ring: torch.Tensor | None = None,
         bond_stereo: torch.Tensor | None = None,
+        frag_hop: torch.Tensor | None = None,
     ) -> None:
         if src.numel() == 0:
             return
-        if ref_dist is None:
+        if etype in DYNAMIC_EDGE_TYPES:
+            ref_dist = torch.full((src.shape[0],), -1.0)
+        elif ref_dist is None:
             ref_dist = torch.linalg.vector_norm(node_coords[src] - node_coords[dst], dim=-1)
         if bond_type is None:
             bond_type = torch.full((src.shape[0],), -1, dtype=torch.int8)
@@ -290,11 +247,8 @@ def build_static_complex_graph(
             bond_ring = torch.zeros(src.shape[0], dtype=torch.bool)
         if bond_stereo is None:
             bond_stereo = torch.full((src.shape[0],), -1, dtype=torch.int8)
-        assert ref_dist is not None
-        assert bond_type is not None
-        assert bond_conj is not None
-        assert bond_ring is not None
-        assert bond_stereo is not None
+        if frag_hop is None:
+            frag_hop = torch.full((src.shape[0],), -1, dtype=torch.int8)
 
         edge_src.extend(src.tolist())
         edge_dst.extend(dst.tolist())
@@ -304,8 +258,9 @@ def build_static_complex_graph(
         edge_bond_conjugated.extend(bond_conj.tolist())
         edge_bond_in_ring.extend(bond_ring.tolist())
         edge_bond_stereo.extend(bond_stereo.tolist())
+        edge_frag_hop.extend(frag_hop.tolist())
 
-    # Ligand chemical graph.
+    # Ligand covalent bonds (keeps bond-type features)
     add_edges(
         lig_data["bond_index"][0],
         lig_data["bond_index"][1],
@@ -316,7 +271,7 @@ def build_static_complex_graph(
         bond_stereo=lig_data["bond_stereo"],
     )
 
-    # Ligand triangulation edges.
+    # Ligand triangulation edges (distance-only)
     add_edges(
         lig_data["tri_edge_index"][0],
         lig_data["tri_edge_index"][1],
@@ -324,94 +279,93 @@ def build_static_complex_graph(
         ref_dist=lig_data["tri_edge_ref_dist"],
     )
 
-    # Explicit cut-bond edges.
+    # Explicit cut-bond edges
     cut_index = lig_data["cut_bond_index"]
     if cut_index.numel() > 0:
         cut_src = torch.cat([cut_index[0], cut_index[1]])
         cut_dst = torch.cat([cut_index[1], cut_index[0]])
         add_edges(cut_src, cut_dst, EDGE_TYPES["ligand_cut"])
 
-    # Atom-fragment ownership edges.
+    # Atom ↔ fragment ownership edges (bidirectional)
     atom_idx = torch.arange(n_lig_atom, dtype=torch.int64)
     frag_idx = frag_offset + lig_data["fragment_id"].to(torch.int64)
     add_edges(atom_idx, frag_idx, EDGE_TYPES["ligand_atom_frag"])
     add_edges(frag_idx, atom_idx, EDGE_TYPES["ligand_atom_frag"])
 
-    # Fragment-fragment full graph.
+    # Fragment-fragment dense graph (with topological hop distance)
     if n_frag > 1:
-        frag_src, frag_dst = [], []
-        for i in range(n_frag):
-            for j in range(n_frag):
-                if i != j:
-                    frag_src.append(frag_offset + i)
-                    frag_dst.append(frag_offset + j)
+        ii, jj = torch.meshgrid(
+            torch.arange(n_frag), torch.arange(n_frag), indexing="ij"
+        )
+        mask = ii != jj
+        ff_src = ii[mask].flatten()
+        ff_dst = jj[mask].flatten()
+        ff_hop = frag_hop_mat[ff_src, ff_dst].to(torch.int8)
         add_edges(
-            torch.tensor(frag_src, dtype=torch.int64),
-            torch.tensor(frag_dst, dtype=torch.int64),
+            frag_offset + ff_src,
+            frag_offset + ff_dst,
             EDGE_TYPES["ligand_frag_frag"],
+            frag_hop=ff_hop,
         )
 
-    # Protein covalent graph.
-    add_edges(
-        prot_atom_offset + patom_data["pbond_index"][0],
-        prot_atom_offset + patom_data["pbond_index"][1],
-        EDGE_TYPES["protein_bond"],
-        bond_type=patom_data["pbond_type"],
-        bond_conj=patom_data["pbond_conjugated"],
-        bond_ring=patom_data["pbond_in_ring"],
-        bond_stereo=patom_data["pbond_stereo"],
-    )
+    # Protein covalent bonds (canonical topology; no chemistry features)
+    pbond_index = patom_data["pbond_index"]
+    if pbond_index.numel() > 0:
+        add_edges(
+            prot_atom_offset + pbond_index[0],
+            prot_atom_offset + pbond_index[1],
+            EDGE_TYPES["protein_bond"],
+        )
 
-    # Protein atom-CA hierarchy edges.
+    # Protein atom ↔ residue virtual node hierarchy (bidirectional)
     residue_lookup = {
-        residue_id: local_pca for local_pca, residue_id in enumerate(pca_residue_id.tolist())
+        residue_id: local_pres
+        for local_pres, residue_id in enumerate(pres_residue_id.tolist())
     }
-    atom_src = []
-    atom_dst = []
+    atom_src: list[int] = []
+    atom_dst: list[int] = []
     for local_atom, residue_id in enumerate(patom_data["patom_residue_id"].tolist()):
-        local_pca = residue_lookup.get(residue_id)
-        if local_pca is None:
+        local_pres = residue_lookup.get(residue_id)
+        if local_pres is None:
             continue
         atom_src.append(prot_atom_offset + local_atom)
-        atom_dst.append(pca_offset + local_pca)
+        atom_dst.append(pres_offset + local_pres)
     if atom_src:
         prot_src = torch.tensor(atom_src, dtype=torch.int64)
         prot_dst = torch.tensor(atom_dst, dtype=torch.int64)
-        add_edges(prot_src, prot_dst, EDGE_TYPES["protein_atom_ca"])
-        add_edges(prot_dst, prot_src, EDGE_TYPES["protein_atom_ca"])
+        add_edges(prot_src, prot_dst, EDGE_TYPES["protein_atom_res"])
+        add_edges(prot_dst, prot_src, EDGE_TYPES["protein_atom_res"])
 
-    # Protein CA-CA graph.
-    if n_pca > 1:
-        ca_dmat = torch.cdist(pca_coords, pca_coords)
-        ca_mask = (ca_dmat <= pca_cutoff) & (~torch.eye(n_pca, dtype=torch.bool))
-        ca_src, ca_dst = ca_mask.nonzero(as_tuple=True)
+    # Protein residue virtual-node neighborhood (distance cutoff)
+    if n_pres > 1:
+        res_dmat = torch.cdist(pres_coords, pres_coords)
+        mask = (res_dmat <= pres_cutoff) & (~torch.eye(n_pres, dtype=torch.bool))
+        rs, rd = mask.nonzero(as_tuple=True)
         add_edges(
-            pca_offset + ca_src,
-            pca_offset + ca_dst,
-            EDGE_TYPES["protein_ca_ca"],
-            ref_dist=ca_dmat[ca_src, ca_dst],
+            pres_offset + rs,
+            pres_offset + rd,
+            EDGE_TYPES["protein_res_res"],
+            ref_dist=res_dmat[rs, rd],
         )
 
-    # Protein CA-fragment global edges.
-    if n_pca > 0 and n_frag > 0:
-        cf_src, cf_dst = [], []
-        for i in range(n_pca):
-            for j in range(n_frag):
-                cf_src.append(pca_offset + i)
-                cf_dst.append(frag_offset + j)
-        cf_src_t = torch.tensor(cf_src, dtype=torch.int64)
-        cf_dst_t = torch.tensor(cf_dst, dtype=torch.int64)
-        add_edges(cf_src_t, cf_dst_t, EDGE_TYPES["protein_ca_frag"])
-        add_edges(cf_dst_t, cf_src_t, EDGE_TYPES["protein_ca_frag"])
+    # Protein residue ↔ ligand fragment global edges (bidirectional)
+    if n_pres > 0 and n_frag > 0:
+        ii, jj = torch.meshgrid(
+            torch.arange(n_pres), torch.arange(n_frag), indexing="ij"
+        )
+        cf_src = pres_offset + ii.flatten()
+        cf_dst = frag_offset + jj.flatten()
+        add_edges(cf_src, cf_dst, EDGE_TYPES["protein_res_frag"])
+        add_edges(cf_dst, cf_src, EDGE_TYPES["protein_res_frag"])
 
     return {
         "node_coords": node_coords,
         "node_type": node_type,
+        # Ligand chemistry
         "node_element": node_element,
         "node_charge": node_charge,
         "node_aromatic": node_aromatic,
         "node_hybridization": node_hybridization,
-        "node_in_ring": node_in_ring,
         "node_degree": node_degree,
         "node_implicit_valence": node_implicit_valence,
         "node_explicit_valence": node_explicit_valence,
@@ -422,15 +376,16 @@ def build_static_complex_graph(
         "node_is_positive": node_is_positive,
         "node_is_negative": node_is_negative,
         "node_is_hydrophobe": node_is_hydrophobe,
-        "node_is_halogen": node_is_halogen,
-        "node_amino_acid": node_amino_acid,
-        "node_is_backbone": node_is_backbone,
-        "node_is_ca": node_is_ca,
-        "node_ca_dist": node_ca_dist,
+        # Protein atom token features
+        "node_patom_token": node_patom_token,
+        "node_patom_is_metal": node_patom_is_metal,
+        # Protein residue virtual-node features
+        "node_pres_residue_type": node_pres_residue_type,
+        "node_pres_is_pseudo": node_pres_is_pseudo,
+        # Shared structural
         "node_fragment_id": node_fragment_id,
         "node_residue_id": node_residue_id,
-        "node_is_dummy": node_is_dummy,
-        "node_is_virtual": node_is_virtual,
+        # Edges
         "edge_index": torch.tensor([edge_src, edge_dst], dtype=torch.int64),
         "edge_type": torch.tensor(edge_type, dtype=torch.int8),
         "edge_ref_dist": torch.tensor(edge_ref_dist, dtype=torch.float32),
@@ -438,13 +393,15 @@ def build_static_complex_graph(
         "edge_bond_conjugated": torch.tensor(edge_bond_conjugated, dtype=torch.bool),
         "edge_bond_in_ring": torch.tensor(edge_bond_in_ring, dtype=torch.bool),
         "edge_bond_stereo": torch.tensor(edge_bond_stereo, dtype=torch.int8),
+        "edge_frag_hop": torch.tensor(edge_frag_hop, dtype=torch.int8),
+        # Counts + slice metadata
         "num_nodes": torch.tensor(total_nodes, dtype=torch.int64),
         "num_lig_atom": torch.tensor(n_lig_atom, dtype=torch.int64),
         "num_lig_frag": torch.tensor(n_frag, dtype=torch.int64),
         "num_prot_atom": torch.tensor(n_prot_atom, dtype=torch.int64),
-        "num_prot_ca": torch.tensor(n_pca, dtype=torch.int64),
+        "num_prot_res": torch.tensor(n_pres, dtype=torch.int64),
         "lig_atom_slice": torch.tensor([0, n_lig_atom], dtype=torch.int64),
         "lig_frag_slice": torch.tensor([frag_offset, prot_atom_offset], dtype=torch.int64),
-        "prot_atom_slice": torch.tensor([prot_atom_offset, pca_offset], dtype=torch.int64),
-        "prot_ca_slice": torch.tensor([pca_offset, total_nodes], dtype=torch.int64),
+        "prot_atom_slice": torch.tensor([prot_atom_offset, pres_offset], dtype=torch.int64),
+        "prot_res_slice": torch.tensor([pres_offset, total_nodes], dtype=torch.int64),
     }

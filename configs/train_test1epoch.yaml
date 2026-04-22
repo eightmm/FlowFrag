@@ -1,0 +1,52 @@
+model:
+  model_type: unified
+  hidden_dim: 128
+  hidden_vec_dim: 16
+  l2_dim: 8
+  l2o_dim: 8
+  num_layers: 6
+  n_rbf: 32
+  t_emb_dim: 64
+  sh_lmax: 2
+  dropout: 0.1
+  contact_cutoff: 5.0
+
+data:
+  data_dir: data/processed
+  split_file: data/splits/pdbbind2020.json
+  pocket_cutoff: 8.0
+  pocket_jitter_sigma: 2.0
+  pocket_cutoff_noise: 2.0
+  min_atoms: 5
+  max_atoms: 80
+  max_frags: 20
+  min_protein_res: 50
+  prior_sigma: 5.0
+  rotation_augmentation: ligand_uniform
+  deterministic: false
+  num_workers: 8
+
+training:
+  max_steps: 200
+  batch_size: 4
+  gradient_accumulation_steps: 8
+  use_muon: true
+  muon_lr: 0.02
+  use_time_weighting: false
+  lr: 1.0e-4
+  weight_decay: 0.01
+  omega_weight: 18.0
+  atom_aux_weight: 0.1
+  dg_weight: 0.5
+  max_grad_norm: 0.5
+  scheduler_type: trapezoidal
+  warmup_ratio: 0.1
+  cooldown_ratio: 0.3
+  seed: 42
+
+logging:
+  use_wandb: false
+  log_every: 100
+  val_every: 0
+  rollout_every: 0
+  output_dir: outputs/test_1epoch

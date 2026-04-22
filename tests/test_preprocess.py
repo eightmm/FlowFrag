@@ -132,9 +132,10 @@ class TestLigandParsing:
         sdf_path = tmp_path / "test.sdf"
         _write_sdf(mol, sdf_path)
 
-        loaded, used_fallback = load_molecule(sdf_path)
+        loaded, used_fallback, sanitize_ok = load_molecule(sdf_path)
         assert loaded is not None
         assert not used_fallback
+        assert sanitize_ok
         assert loaded.GetNumAtoms() == 6
 
     def test_featurize_benzene(self):
@@ -235,8 +236,63 @@ class TestFragmentDecomposition:
         assert result is not None
         assert result["frag_sizes"].sum().item() == 14
 
+    def test_triangulation_edge_filtering(self):
+        """Verify that neighbor-neighbor pairs (torsion-dependent) are excluded."""
+        # Ethane-like: C1-C2-C3-C4 (actually 4 atoms)
+        # 0-1 (cut) 1-2, 2-3... wait.
+        # Let's use a simple 4-atom chain: A-B-C-D where B-C is rotatable.
+        # Frag1: {A, B}, Frag2: {C, D}
+        # Cut bond: (1, 2)
+        # Neighbors of 1 in Frag1: {0}
+        # Neighbors of 2 in Frag2: {3}
+        # Triangulation edges should be: (1, 2), (1, 3), (0, 2)
+        # (0, 3) should be EXCLUDED as it depends on torsion 0-1-2-3.
+        coords = [[0, 0, 0], [1.5, 0, 0], [3.0, 0, 0], [4.5, 0, 0]]
+        mol = _make_mol_manual_coords("CCCC", coords)
+        # Ensure B-C is rotatable and cut
+        # Decompose will cut B-C (1-2) if it's not in ring, etc.
+        res = decompose_fragments(mol, torch.tensor(coords, dtype=torch.float32))
+        assert res is not None
+        assert res["n_frags"] == 2
+
+        # Check tri_edge_index
+        tri_edges = res["tri_edge_index"]
+        # Convert to set of frozen sets for easy comparison
+        edge_sets = {frozenset(tri_edges[:, k].tolist()) for k in range(tri_edges.shape[1])}
+
+        # Expected:
+        # (1, 2) - invariant (bond length)
+        # (1, 3) - invariant (bond angle)
+        # (0, 2) - invariant (bond angle)
+        assert frozenset([1, 2]) in edge_sets
+        assert frozenset([1, 3]) in edge_sets
+        assert frozenset([0, 2]) in edge_sets
+
+        # EXCLUDED:
+        # (0, 3) - variant (torsion)
+        assert frozenset([0, 3]) not in edge_sets
+
 
 # ─── Integration Test ─────────────────────────────────────────────────
+
+# Pocket PDB placed near diphenylethane ligand (coords ~0-9 Å) so the
+# 8 Å residue-level cutoff keeps all residues.
+E2E_POCKET_PDB = """\
+ATOM      1  N   ALA A   1       3.000   3.000   0.500  1.00 20.00           N
+ATOM      2  CA  ALA A   1       4.500   3.000   0.500  1.00 20.00           C
+ATOM      3  C   ALA A   1       5.500   3.000   0.500  1.00 20.00           C
+ATOM      4  O   ALA A   1       5.500   4.200   0.500  1.00 20.00           O
+ATOM      5  CB  ALA A   1       4.500   1.500   0.500  1.00 20.00           C
+ATOM      6  N   LEU A   2       6.700   3.000   0.500  1.00 20.00           N
+ATOM      7  CA  LEU A   2       7.500   4.200   0.500  1.00 20.00           C
+ATOM      8  C   LEU A   2       8.500   4.200   0.500  1.00 20.00           C
+ATOM      9  O   LEU A   2       8.500   5.400   0.500  1.00 20.00           O
+ATOM     10  CB  LEU A   2       7.500   5.700   0.500  1.00 20.00           C
+ATOM     11  CG  LEU A   2       7.500   7.200   0.500  1.00 20.00           C
+ATOM     12  CD1 LEU A   2       6.300   7.900   0.500  1.00 20.00           C
+ATOM     13  CD2 LEU A   2       8.700   7.900   0.500  1.00 20.00           C
+END
+"""
 
 
 class TestEndToEnd:
@@ -246,8 +302,8 @@ class TestEndToEnd:
         complex_dir = tmp_path / pdb_id
         complex_dir.mkdir()
 
-        # Create pocket PDB
-        (complex_dir / f"{pdb_id}_pocket.pdb").write_text(SAMPLE_PDB)
+        # Create pocket PDB (near ligand coords)
+        (complex_dir / f"{pdb_id}_pocket.pdb").write_text(E2E_POCKET_PDB)
 
         # Create ligand SDF
         mol = _make_mol_manual_coords("c1ccc(CCc2ccccc2)cc1", DIPHENYLETHANE_COORDS)
@@ -261,21 +317,23 @@ class TestEndToEnd:
         result = process_complex(complex_dir, out_dir)
 
         assert result["success"], f"Failed: {result.get('reason')}"
-        assert result["num_res"] == 4
+        assert result["num_res"] == 2
         assert result["num_atom"] == 14
         assert result["num_frag"] >= 1
 
-        # Verify saved files exist
+        # Verify saved files (protein + ligand + meta, no graph.pt)
         assert (out_dir / pdb_id / "protein.pt").exists()
         assert (out_dir / pdb_id / "ligand.pt").exists()
         assert (out_dir / pdb_id / "meta.pt").exists()
+        assert not (out_dir / pdb_id / "graph.pt").exists()
 
         # Load and verify shapes
         prot = torch.load(out_dir / pdb_id / "protein.pt", weights_only=True)
         lig = torch.load(out_dir / pdb_id / "ligand.pt", weights_only=False)
         meta = torch.load(out_dir / pdb_id / "meta.pt", weights_only=False)
 
-        assert prot["res_coords"].shape == (4, 3)
+        assert prot["pres_coords"].ndim == 2 and prot["pres_coords"].shape[1] == 3
+        assert prot["patom_coords"].ndim == 2 and prot["patom_coords"].shape[1] == 3
         assert lig["atom_coords"].shape == (14, 3)
         assert lig["fragment_id"].shape[0] == 14
         assert lig["frag_centers"].shape[1] == 3

@@ -1,10 +1,10 @@
 model:
   model_type: unified
-  hidden_dim: 256
-  hidden_vec_dim: 32
-  l2_dim: 16
-  l2o_dim: 16
-  num_layers: 4
+  hidden_dim: 512
+  hidden_vec_dim: 64
+  l2_dim: 32
+  l2o_dim: 32
+  num_layers: 6
   n_rbf: 32
   t_emb_dim: 128
   sh_lmax: 2
@@ -27,29 +27,30 @@ data:
   num_workers: 8
 
 training:
-  max_steps: 50000
-  batch_size: 4
-  gradient_accumulation_steps: 8
+  max_steps: 100000
+  batch_size: 48
+  gradient_accumulation_steps: 1
   use_muon: true
   muon_lr: 0.02
-  lr: 3.0e-4              # 1e-4 → 3e-4 (transformer standard)
+  lr: 3.0e-4
   weight_decay: 0.01
-  omega_weight: 18.0
-  atom_aux_weight: 0.1
-  dg_weight: 0.5
-  max_grad_norm: 1.0      # 0.5 → 1.0 (less aggressive clipping)
+  omega_weight: 8.0
+  atom_aux_weight: 0.3
+  dg_weight: 3.0
+  boundary_weight: 0.3
+  max_grad_norm: 1.0
   scheduler_type: trapezoidal
-  warmup_ratio: 0.01      # Muon is stable, short warmup sufficient
+  warmup_ratio: 0.01
   cooldown_ratio: 0.3
   seed: 42
   use_ema: true
   ema_decay: 0.999
-  use_time_weighting: false  # sampling itself is late-biased (t = sqrt(U))
+  use_time_weighting: false
 
 logging:
   use_wandb: true
   wandb_project: flowfrag
-  wandb_run_name: null
+  wandb_run_name: v2-scale-loss
   log_every: 50
   val_every: 500
   rollout_every: 5000
@@ -57,4 +58,4 @@ logging:
   rollout_time_schedule: late
   rollout_schedule_power: 3.0
   rollout_max_samples: 50
-  output_dir: outputs
+  output_dir: outputs/v2

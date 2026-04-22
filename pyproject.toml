@@ -31,6 +31,7 @@ dependencies = [
     "networkx>=3.0",
     "e3nn>=0.6.0",
     "posebusters>=0.6.5",
+    "openmm>=8.5.1",
 ]
 
 [project.optional-dependencies]

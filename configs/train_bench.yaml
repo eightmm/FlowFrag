@@ -27,34 +27,29 @@ data:
   num_workers: 8
 
 training:
-  max_steps: 50000
+  max_steps: 500
   batch_size: 4
   gradient_accumulation_steps: 8
   use_muon: true
   muon_lr: 0.02
-  lr: 3.0e-4              # 1e-4 → 3e-4 (transformer standard)
+  lr: 3.0e-4
   weight_decay: 0.01
   omega_weight: 18.0
   atom_aux_weight: 0.1
   dg_weight: 0.5
-  max_grad_norm: 1.0      # 0.5 → 1.0 (less aggressive clipping)
+  max_grad_norm: 1.0
   scheduler_type: trapezoidal
-  warmup_ratio: 0.01      # Muon is stable, short warmup sufficient
+  warmup_ratio: 0.01
   cooldown_ratio: 0.3
   seed: 42
   use_ema: true
   ema_decay: 0.999
-  use_time_weighting: false  # sampling itself is late-biased (t = sqrt(U))
+  use_time_weighting: false
+  use_amp: false
 
 logging:
-  use_wandb: true
-  wandb_project: flowfrag
-  wandb_run_name: null
+  use_wandb: false
   log_every: 50
-  val_every: 500
-  rollout_every: 5000
-  rollout_steps: 25
-  rollout_time_schedule: late
-  rollout_schedule_power: 3.0
-  rollout_max_samples: 50
-  output_dir: outputs
+  val_every: 0
+  rollout_every: 0
+  output_dir: outputs/bench

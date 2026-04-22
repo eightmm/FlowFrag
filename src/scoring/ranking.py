@@ -1,14 +1,14 @@
-"""Pose ranking: Vina score + PoseBusters-style physicochemical checks.
+"""Pose ranking: Vina score + PoseBusters-style checks + RMSD clustering.
 
-Implements SigmaDock's ranking formula: s_i = -b_i * p_i^beta
+Ranking formula (SigmaDock): s_i = -b_i * p_i^beta
 where b_i is Vina binding energy and p_i is average PoseBusters validity.
 
 PB checks (5 items, all distance-geometry based):
-  1. Bond lengths — within [0.75, 2.2]A
+  1. Bond lengths — within [0.75, 2.2]Å
   2. Bond angles — within ±15° of hybridization ideal
   3. Internal steric clash — non-1,2/1,3 pairs > vdw_sum * 0.75
   4. Tetrahedral chirality — signed volume sign matches reference
-  5. Ring planarity — aromatic ring deviation from plane < 0.25A
+  5. Ring planarity — aromatic ring deviation from plane < 0.25Å
 """
 
 from __future__ import annotations
@@ -20,8 +20,12 @@ import torch
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
 
-from .vina_features import compute_pocket_features_from_pdb, compute_vina_features
-from .vina_scoring import precompute_interaction_matrices, vina_scoring
+from .vina import (
+    compute_pocket_features_from_pdb,
+    compute_vina_features,
+    precompute_interaction_matrices,
+    vina_scoring,
+)
 
 # Expected angles per hybridization
 _IDEAL_ANGLES = {
@@ -36,6 +40,10 @@ _IDEAL_ANGLES = {
 _VDW_RADII = {1: 1.20, 5: 1.92, 6: 1.70, 7: 1.55, 8: 1.52, 9: 1.47,
               14: 2.10, 15: 1.80, 16: 1.80, 17: 1.75, 34: 1.90, 35: 1.85, 53: 1.98}
 
+
+# ---------------------------------------------------------------------------
+# PoseBusters-style validity checks
+# ---------------------------------------------------------------------------
 
 def _get_angle(pos: torch.Tensor, i: int, j: int, k: int) -> float:
     """Compute angle i-j-k in degrees from coordinates."""
@@ -60,7 +68,6 @@ def check_physicochemical_validity(
     """PoseBusters-style internal geometry validity checks (5 items).
 
     Returns dict with per-check pass rates and averaged validity_score in [0, 1].
-    PL interaction quality is handled by Vina scoring, not here.
     """
     n_atoms = mol.GetNumAtoms()
 
@@ -92,7 +99,6 @@ def check_physicochemical_validity(
     angle_pass = 1.0 - n_bad_angles / n_angles if n_angles > 0 else 1.0
 
     # ---- 3. Internal steric clash (non-1,2 and non-1,3 pairs) ----
-    # Build 1,2 (bonded) and 1,3 (angle) exclusion sets
     excluded = set()
     for bond in mol.GetBonds():
         i, j = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
@@ -120,7 +126,6 @@ def check_physicochemical_validity(
     clash_pass = 1.0 - n_clashes / n_checked if n_checked > 0 else 1.0
 
     # ---- 4. Tetrahedral chirality ----
-    # Reference: use mol's existing conformer (crystal) for sign comparison
     ref_conf = mol.GetConformer() if mol.GetNumConformers() > 0 else None
     chiral_atoms = Chem.FindMolChiralCenters(mol, includeUnassigned=False)
     n_chiral = 0
@@ -139,7 +144,7 @@ def check_physicochemical_validity(
             n_chiral += 1
             ref_vol = _signed_volume(ref_pos, center_idx, nbrs[:3])
             pred_vol = _signed_volume(pred_pos, center_idx, nbrs[:3])
-            if ref_vol * pred_vol < 0:  # sign flip = chirality inversion
+            if ref_vol * pred_vol < 0:
                 n_chiral_wrong += 1
     chiral_pass = 1.0 - n_chiral_wrong / n_chiral if n_chiral > 0 else 1.0
 
@@ -148,14 +153,12 @@ def check_physicochemical_validity(
     n_rings = 0
     n_nonplanar = 0
     for ring in ri.AtomRings():
-        # Only check aromatic rings
         if not all(mol.GetAtomWithIdx(idx).GetIsAromatic() for idx in ring):
             continue
         n_rings += 1
         coords = torch.stack([pred_pos[idx] for idx in ring])
         centered = coords - coords.mean(dim=0, keepdim=True)
         _, s, _ = torch.linalg.svd(centered)
-        # Max deviation from plane: smallest singular value / sqrt(n_ring_atoms)
         max_dev = s[-1].item() / math.sqrt(len(ring))
         if max_dev > 0.25:
             n_nonplanar += 1
@@ -164,8 +167,6 @@ def check_physicochemical_validity(
     # ---- Aggregate ----
     checks = [bond_pass, angle_pass, clash_pass, chiral_pass, planar_pass]
     validity_score = sum(checks) / len(checks)
-
-    # Binary valid (all checks perfect)
     valid = 1.0 if all(c == 1.0 for c in checks) else 0.0
 
     return {
@@ -184,6 +185,10 @@ def check_physicochemical_validity(
     }
 
 
+# ---------------------------------------------------------------------------
+# Pose ranking
+# ---------------------------------------------------------------------------
+
 def rank_poses(
     mol: Chem.Mol,
     poses: list[torch.Tensor],
@@ -196,9 +201,7 @@ def rank_poses(
 ) -> list[dict]:
     """Rank poses by combined score: s_i = -vina_i * validity_i^beta.
 
-    SigmaDock-style: continuous validity score multiplied with Vina energy.
     Higher s_i = better pose (more negative Vina * high validity).
-
     If pocket_cutoff is set, protein atoms further than cutoff Å from
     pocket_center are filtered out (speeds up full-protein PDBs).
     """
@@ -224,7 +227,6 @@ def rank_poses(
 
         physchem = check_physicochemical_validity(mol, pos_abs)
 
-        # SigmaDock formula: s = -b * p^beta (higher = better)
         p = physchem["validity_score"]
         combined = -v_score * (p ** validity_beta)
 
@@ -235,6 +237,77 @@ def rank_poses(
             **physchem,
         })
 
-    # Rank by combined score (higher = better)
     results.sort(key=lambda x: x["combined_score"], reverse=True)
     return results
+
+
+# ---------------------------------------------------------------------------
+# RMSD-based pose clustering
+# ---------------------------------------------------------------------------
+
+def cluster_poses(
+    poses: list[torch.Tensor], threshold: float = 2.0,
+) -> list[list[int]]:
+    """Greedy RMSD-based clustering of poses.
+
+    Returns list of clusters (largest first), each cluster is a list of pose indices.
+    """
+    n = len(poses)
+    assigned = [False] * n
+    clusters: list[list[int]] = []
+
+    rmsd_matrix = torch.zeros(n, n)
+    for i in range(n):
+        for j in range(i + 1, n):
+            r = (poses[i] - poses[j]).pow(2).sum(-1).mean().sqrt().item()
+            rmsd_matrix[i, j] = r
+            rmsd_matrix[j, i] = r
+
+    while not all(assigned):
+        best_seed = -1
+        best_count = -1
+        for i in range(n):
+            if assigned[i]:
+                continue
+            count = sum(
+                1 for j in range(n)
+                if not assigned[j] and rmsd_matrix[i, j] < threshold
+            )
+            if count > best_count:
+                best_count = count
+                best_seed = i
+
+        cluster = [
+            j for j in range(n)
+            if not assigned[j] and rmsd_matrix[best_seed, j] < threshold
+        ]
+        for j in cluster:
+            assigned[j] = True
+        clusters.append(cluster)
+
+    clusters.sort(key=len, reverse=True)
+    return clusters
+
+
+def select_by_clustering(
+    poses: list[torch.Tensor], threshold: float = 2.0,
+) -> int:
+    """Select the centroid of the largest cluster. Returns pose index."""
+    clusters = cluster_poses(poses, threshold)
+    largest = clusters[0]
+
+    if len(largest) == 1:
+        return largest[0]
+
+    best_idx = largest[0]
+    best_mean = float("inf")
+    for i in largest:
+        mean_rmsd = sum(
+            (poses[i] - poses[j]).pow(2).sum(-1).mean().sqrt().item()
+            for j in largest if j != i
+        ) / (len(largest) - 1)
+        if mean_rmsd < best_mean:
+            best_mean = mean_rmsd
+            best_idx = i
+
+    return best_idx

@@ -3,7 +3,7 @@
 Each fragment gets:
 - T_frag (centroid) and R_frag = I (identity, by construction)
 - local_coords relative to centroid
-- Single-atom fragments: valid for translation, omega fixed to 0
+- Single-atom fragments are avoided by merging back into a neighbor.
 """
 
 import torch
@@ -21,8 +21,10 @@ def decompose_fragments(mol: Chem.Mol, atom_coords: torch.Tensor) -> dict | None
         fragment_id: [N_atom] int64 — fragment assignment per atom
         frag_centers: [N_frag, 3] float32 — geometric centroids
         frag_local_coords: [N_atom, 3] float32 — coords in fragment frame
-        frag_sizes: [N_frag] int64 — number of atoms per fragment
+        frag_sizes: [N_frag] int64 — number of atoms per fragment (real only)
         n_frags: int
+        rot_bonds: cut bonds AFTER singleton merge (only cross-fragment)
+        cut_bond_index, tri_edge_index, tri_edge_ref_dist, fragment_adj_index
 
     Returns None on failure.
     """
@@ -30,38 +32,42 @@ def decompose_fragments(mol: Chem.Mol, atom_coords: torch.Tensor) -> dict | None
     if n_atoms < 2:
         return None
 
-    # Find rotatable bonds to cut
     rot_bonds = _get_rotatable_bonds(mol)
-
-    # Assign atoms to fragments via connected components after cutting
     fragment_id = _assign_fragments(mol, rot_bonds, n_atoms)
 
-    # Reindex fragments to be contiguous 0..N_frag-1
-    unique_frags, fragment_id = torch.unique(fragment_id, return_inverse=True)
-    n_frags = len(unique_frags)
+    # Merge any size-1 fragments into an adjacent fragment (via any heavy bond).
+    # This avoids degenerate single-atom fragments that arise when both bonds of
+    # a degree-2 middle atom are cut (e.g., alkyl chains).
+    fragment_id = _merge_singleton_fragments(mol, fragment_id, n_atoms)
 
-    # Compute per-fragment geometric centroids and local coords
+    _, fragment_id = torch.unique(fragment_id, return_inverse=True)
+    n_frags = int(fragment_id.max().item() + 1)
+
+    # After merge, some originally-cut bonds may now lie inside a single fragment.
+    # Filter rot_bonds to keep only cross-fragment ones so downstream edges and
+    # dummy-atom insertion stay consistent.
+    rot_bonds = [
+        (a, b)
+        for a, b in rot_bonds
+        if fragment_id[a].item() != fragment_id[b].item()
+    ]
+
+    frag_sizes = torch.bincount(fragment_id, minlength=n_frags)
+
     frag_centers = torch.zeros(n_frags, 3, dtype=torch.float32)
-    frag_sizes = torch.zeros(n_frags, dtype=torch.int64)
+    frag_centers.scatter_add_(
+        0, fragment_id[:, None].expand(-1, 3), atom_coords.to(torch.float32)
+    )
+    frag_centers /= frag_sizes[:, None].clamp(min=1).to(torch.float32)
 
-    for f in range(n_frags):
-        mask = fragment_id == f
-        frag_coords = atom_coords[mask]
-        frag_centers[f] = frag_coords.mean(dim=0)
-        frag_sizes[f] = mask.sum()
-
-    # Local coords: relative to fragment centroid
-    # Reconstruction: x_global = R_frag @ x_local + T_frag
-    # At crystal pose: R_frag = I, T_frag = centroid
+    # Local coords: x_global = R_frag @ x_local + T_frag; at crystal pose R = I.
     frag_local_coords = atom_coords - frag_centers[fragment_id]
 
-    # Validate
     if not torch.isfinite(frag_centers).all():
         return None
     if not torch.isfinite(frag_local_coords).all():
         return None
 
-    # Triangulation: cross-fragment edges near cut bonds
     tri_data = _build_triangulation_edges(mol, rot_bonds, fragment_id, atom_coords)
 
     return {
@@ -75,6 +81,46 @@ def decompose_fragments(mol: Chem.Mol, atom_coords: torch.Tensor) -> dict | None
     }
 
 
+def _merge_singleton_fragments(
+    mol: Chem.Mol,
+    fragment_id: torch.Tensor,
+    n_atoms: int,
+) -> torch.Tensor:
+    """Absorb size-1 fragments into their LARGEST neighboring fragment.
+
+    When a singleton atom has multiple neighboring fragments, it joins the one
+    with the most atoms. Tie-break: first neighbor in RDKit's deterministic
+    order. Iterates until no singletons remain.
+    """
+    for _ in range(n_atoms):
+        counts = torch.bincount(fragment_id)
+        singletons = (counts == 1).nonzero(as_tuple=True)[0]
+        if singletons.numel() == 0:
+            return fragment_id
+        changed = False
+        for f in singletons.tolist():
+            idxs = (fragment_id == f).nonzero(as_tuple=True)[0]
+            if idxs.numel() != 1:
+                continue
+            a = int(idxs.item())
+            best_target: int | None = None
+            best_size = -1
+            for nbr in mol.GetAtomWithIdx(a).GetNeighbors():
+                target = int(fragment_id[nbr.GetIdx()].item())
+                if target == f:
+                    continue
+                size = int((fragment_id == target).sum().item())
+                if size > best_size:
+                    best_size = size
+                    best_target = target
+            if best_target is not None:
+                fragment_id[a] = best_target
+                changed = True
+        if not changed:
+            return fragment_id
+    return fragment_id
+
+
 def _build_triangulation_edges(
     mol: Chem.Mol,
     rot_bonds: list[tuple[int, int]],
@@ -86,48 +132,59 @@ def _build_triangulation_edges(
     For each cut bond (a, b) with a in frag_A, b in frag_B:
     - Collect 1-hop neighbors of a within frag_A (including a)
     - Collect 1-hop neighbors of b within frag_B (including b)
-    - Add all cross-fragment pairs as triangulation edges
+    - Add cross-fragment pairs where at least one endpoint IS a cut-bond atom
+      (invariant under torsion around the cut bond axis)
     - Store crystal reference distances for each pair
 
-    Also builds fragment adjacency from cut bond topology.
+    Also builds fragment adjacency from cut bond topology. Both edge sets are
+    deduplicated.
     """
-    tri_src, tri_dst = [], []
-    ref_dists = []
-    frag_adj_src, frag_adj_dst = [], []
+    tri_src: list[int] = []
+    tri_dst: list[int] = []
+    ref_dists: list[float] = []
+    tri_seen: set[tuple[int, int]] = set()
+
+    adj_seen: set[tuple[int, int]] = set()
+    frag_adj_src: list[int] = []
+    frag_adj_dst: list[int] = []
 
     for a, b in rot_bonds:
-        fa = fragment_id[a].item()
-        fb = fragment_id[b].item()
+        fa = int(fragment_id[a].item())
+        fb = int(fragment_id[b].item())
         if fa == fb:
-            continue  # shouldn't happen, but safety check
+            continue
 
-        # Fragment adjacency (bidirectional)
-        frag_adj_src.extend([fa, fb])
-        frag_adj_dst.extend([fb, fa])
+        for s, d in ((fa, fb), (fb, fa)):
+            if (s, d) not in adj_seen:
+                adj_seen.add((s, d))
+                frag_adj_src.append(s)
+                frag_adj_dst.append(d)
 
-        # 1-hop neighbors of a within frag_A (+ a itself)
         left = {a}
         for nbr in mol.GetAtomWithIdx(a).GetNeighbors():
             ni = nbr.GetIdx()
-            if fragment_id[ni].item() == fa:
+            if int(fragment_id[ni].item()) == fa:
                 left.add(ni)
 
-        # 1-hop neighbors of b within frag_B (+ b itself)
         right = {b}
         for nbr in mol.GetAtomWithIdx(b).GetNeighbors():
             ni = nbr.GetIdx()
-            if fragment_id[ni].item() == fb:
+            if int(fragment_id[ni].item()) == fb:
                 right.add(ni)
 
-        # Cross-fragment pairs (bidirectional)
         for i in left:
             for j in right:
+                if i != a and j != b:
+                    continue
+                key = (min(i, j), max(i, j))
+                if key in tri_seen:
+                    continue
+                tri_seen.add(key)
+                d_val = torch.linalg.vector_norm(atom_coords[i] - atom_coords[j]).item()
                 tri_src.extend([i, j])
                 tri_dst.extend([j, i])
-                d = torch.linalg.vector_norm(atom_coords[i] - atom_coords[j]).item()
-                ref_dists.extend([d, d])
+                ref_dists.extend([d_val, d_val])
 
-    # Build tensors
     if tri_src:
         tri_edge_index = torch.tensor([tri_src, tri_dst], dtype=torch.int64)
         tri_edge_ref_dist = torch.tensor(ref_dists, dtype=torch.float32)
@@ -136,191 +193,90 @@ def _build_triangulation_edges(
         tri_edge_ref_dist = torch.zeros(0, dtype=torch.float32)
 
     if frag_adj_src:
-        # Deduplicate fragment adjacency
-        adj_pairs = set()
-        dedup_src, dedup_dst = [], []
-        for s, d in zip(frag_adj_src, frag_adj_dst):
-            if (s, d) not in adj_pairs:
-                adj_pairs.add((s, d))
-                dedup_src.append(s)
-                dedup_dst.append(d)
-        fragment_adj_index = torch.tensor([dedup_src, dedup_dst], dtype=torch.int64)
+        fragment_adj_index = torch.tensor([frag_adj_src, frag_adj_dst], dtype=torch.int64)
     else:
         fragment_adj_index = torch.zeros(2, 0, dtype=torch.int64)
 
     return {
-        "cut_bond_index": torch.tensor(rot_bonds, dtype=torch.int64).T
-        if rot_bonds
-        else torch.zeros(2, 0, dtype=torch.int64),
+        "cut_bond_index": (
+            torch.tensor(rot_bonds, dtype=torch.int64).T
+            if rot_bonds
+            else torch.zeros(2, 0, dtype=torch.int64)
+        ),
         "tri_edge_index": tri_edge_index,
         "tri_edge_ref_dist": tri_edge_ref_dist,
         "fragment_adj_index": fragment_adj_index,
     }
 
 
-def add_dummy_atoms(
-    frag_data: dict,
-    atom_coords: torch.Tensor,
-    atom_feats: dict,
-    rot_bonds: list[tuple[int, int]],
-) -> dict:
-    """Add dummy atoms at cut-bond boundaries (SigmaDock-style).
-
-    For each cut bond (a in frag_A, b in frag_B):
-    - Add a copy of b into frag_A (dummy)
-    - Add a copy of a into frag_B (dummy)
-
-    Dummy atoms have identical features to their real counterparts but belong
-    to the adjacent fragment.  Centroids are NOT recomputed (stay from real
-    atoms only).
-
-    Returns updated frag_data with extra keys:
-    - ``is_dummy``: ``[N_atom_ext]`` bool — True for dummy atoms
-    - ``dummy_to_real``: ``[N_dummy, 2]`` — (dummy_idx, real_idx) pairs
-    - All existing atom-level tensors extended with dummy entries
-    """
-    fragment_id = frag_data["fragment_id"]
-    frag_centers = frag_data["frag_centers"]
-    n_real = atom_coords.shape[0]
-
-    dummy_coords = []
-    dummy_frag_ids = []
-    dummy_to_real_pairs = []  # (dummy_idx, real_idx)
-    dummy_feat_indices = []  # index into real atoms to copy features from
-
-    idx = n_real  # next available atom index
-    for a, b in rot_bonds:
-        fa = fragment_id[a].item()
-        fb = fragment_id[b].item()
-        if fa == fb:
-            continue
-
-        # Add b as dummy in frag_A
-        dummy_coords.append(atom_coords[b])
-        dummy_frag_ids.append(fa)
-        dummy_to_real_pairs.append((idx, b))
-        dummy_feat_indices.append(b)
-        idx += 1
-
-        # Add a as dummy in frag_B
-        dummy_coords.append(atom_coords[a])
-        dummy_frag_ids.append(fb)
-        dummy_to_real_pairs.append((idx, a))
-        dummy_feat_indices.append(a)
-        idx += 1
-
-    n_dummy = len(dummy_coords)
-    if n_dummy == 0:
-        # No cut bonds → no dummies needed
-        frag_data["is_dummy"] = torch.zeros(n_real, dtype=torch.bool)
-        frag_data["dummy_to_real"] = torch.zeros(0, 2, dtype=torch.int64)
-        return frag_data
-
-    # Extended coordinates
-    dummy_coords_t = torch.stack(dummy_coords)  # [N_dummy, 3]
-    all_coords = torch.cat([atom_coords, dummy_coords_t])  # [N_ext, 3]
-
-    # Extended fragment IDs
-    dummy_frag_t = torch.tensor(dummy_frag_ids, dtype=torch.int64)
-    ext_frag_id = torch.cat([fragment_id, dummy_frag_t])
-
-    # Local coords for dummies (relative to their assigned fragment centroid)
-    dummy_local = dummy_coords_t - frag_centers[dummy_frag_t]
-    ext_local = torch.cat([frag_data["frag_local_coords"], dummy_local])
-
-    # Update frag_sizes to include dummies
-    ext_sizes = frag_data["frag_sizes"].clone()
-    for fid in dummy_frag_ids:
-        ext_sizes[fid] += 1
-
-    # is_dummy mask
-    is_dummy = torch.zeros(n_real + n_dummy, dtype=torch.bool)
-    is_dummy[n_real:] = True
-
-    # dummy_to_real mapping
-    dummy_to_real = torch.tensor(dummy_to_real_pairs, dtype=torch.int64)
-
-    # Extend atom features by copying from real counterparts
-    feat_idx = torch.tensor(dummy_feat_indices, dtype=torch.int64)
-    feature_keys = (
-        "atom_element",
-        "atom_charge",
-        "atom_aromatic",
-        "atom_hybridization",
-        "atom_in_ring",
-        "atom_degree",
-        "atom_implicit_valence",
-        "atom_explicit_valence",
-        "atom_num_rings",
-        "atom_chirality",
-        "atom_is_donor",
-        "atom_is_acceptor",
-        "atom_is_positive",
-        "atom_is_negative",
-        "atom_is_hydrophobe",
-        "atom_is_halogen",
-    )
-    for key in feature_keys:
-        if key in atom_feats:
-            orig = atom_feats[key]
-            frag_data[key] = torch.cat([orig, orig[feat_idx]])
-
-    frag_data["atom_coords"] = all_coords
-    frag_data["fragment_id"] = ext_frag_id
-    frag_data["frag_local_coords"] = ext_local
-    frag_data["frag_sizes"] = ext_sizes
-    frag_data["is_dummy"] = is_dummy
-    frag_data["dummy_to_real"] = dummy_to_real
-    # frag_centers unchanged — computed from real atoms only
-
-    return frag_data
-
-
 def _get_rotatable_bonds(mol: Chem.Mol) -> list[tuple[int, int]]:
-    """Get rotatable bonds to cut for fragment decomposition.
+    """Return bonds to cut. Greedy selection that avoids singleton fragments.
 
-    Rules:
-    - Non-ring single bonds that are rotatable
-    - Exclude bonds inside ring systems
-    - Exclude bonds to terminal atoms (degree 1) — they stay with parent
+    Per-bond rules (``_is_cuttable_bond``): single, not in ring, not amide-like,
+    both endpoints heavy-degree > 1.
+
+    Greedy pass: iterates cuttable candidates in deterministic order and only
+    accepts a cut if BOTH endpoints would still have >=1 remaining non-cut
+    heavy bond afterwards. This guarantees every atom stays connected to at
+    least one neighbor in the fragment graph (no size-1 fragments) and gives
+    alternating cuts for long alkyl chains.
     """
-    rot_bonds = []
+    candidates: list[tuple[int, int]] = []
     for bond in mol.GetBonds():
         if not _is_cuttable_bond(bond):
             continue
         i, j = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
-        rot_bonds.append((i, j))
+        candidates.append((min(i, j), max(i, j)))
+    candidates.sort()
 
-    return rot_bonds
+    remaining = [a.GetDegree() for a in mol.GetAtoms()]
+    cut_bonds: list[tuple[int, int]] = []
+    for i, j in candidates:
+        if remaining[i] > 1 and remaining[j] > 1:
+            cut_bonds.append((i, j))
+            remaining[i] -= 1
+            remaining[j] -= 1
+    return cut_bonds
+
+
+def _is_planar_conjugated_bond(bond: Chem.Bond) -> bool:
+    """Return True for amide/ester/urea/carbamate/sulfonamide single bonds.
+
+    These are the conjugated single bonds we want to keep rigid. Biaryl
+    Caromatic-Caromatic single bonds are *not* included — they are physically
+    rotatable and should become fragment boundaries.
+    """
+    a1, a2 = bond.GetBeginAtom(), bond.GetEndAtom()
+    for heavy, partner in ((a1, a2), (a2, a1)):
+        z = heavy.GetAtomicNum()
+        if z == 6 and partner.GetAtomicNum() in (7, 8):
+            for b in heavy.GetBonds():
+                if (
+                    b.GetBondType() == Chem.rdchem.BondType.DOUBLE
+                    and b.GetOtherAtom(heavy).GetAtomicNum() == 8
+                ):
+                    return True
+        elif z == 16 and partner.GetAtomicNum() == 7:
+            n_double_o = sum(
+                1
+                for b in heavy.GetBonds()
+                if b.GetBondType() == Chem.rdchem.BondType.DOUBLE
+                and b.GetOtherAtom(heavy).GetAtomicNum() == 8
+            )
+            if n_double_o >= 2:
+                return True
+    return False
 
 
 def _is_cuttable_bond(bond: Chem.Bond) -> bool:
-    """Determine if a bond should be cut for fragmentation.
-
-    A bond is cuttable if:
-    1. It's a single bond
-    2. It's not in a ring
-    3. It's not to a terminal heavy atom (degree 1)
-    4. Neither end is in an aromatic system connected only by this bond
-    """
-    # Must be single bond
     if bond.GetBondType() != Chem.rdchem.BondType.SINGLE:
         return False
-
-    # Must not be in a ring
     if bond.IsInRing():
         return False
-
-    # Must not be conjugated (keeps amide bonds intact)
-    if bond.GetIsConjugated():
+    if _is_planar_conjugated_bond(bond):
         return False
-
-    # Neither atom should be terminal (degree 1 in heavy-atom graph)
-    begin = bond.GetBeginAtom()
-    end = bond.GetEndAtom()
-    if begin.GetDegree() <= 1 or end.GetDegree() <= 1:
+    if bond.GetBeginAtom().GetDegree() <= 1 or bond.GetEndAtom().GetDegree() <= 1:
         return False
-
     return True
 
 
@@ -329,16 +285,11 @@ def _assign_fragments(
     rot_bonds: list[tuple[int, int]],
     n_atoms: int,
 ) -> torch.Tensor:
-    """Assign atoms to fragments using connected components after cutting bonds.
-
-    Uses union-find for efficient component assignment.
-    """
-    # Build bond set to exclude
+    """Assign atoms to fragments by connected components after cutting bonds."""
     cut_set = set()
     for i, j in rot_bonds:
         cut_set.add((min(i, j), max(i, j)))
 
-    # Union-Find
     parent = list(range(n_atoms))
 
     def find(x: int) -> int:
@@ -352,13 +303,10 @@ def _assign_fragments(
         if ra != rb:
             parent[ra] = rb
 
-    # Union atoms connected by non-cut bonds
     for bond in mol.GetBonds():
         i, j = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
         key = (min(i, j), max(i, j))
         if key not in cut_set:
             union(i, j)
 
-    # Assign fragment IDs
-    fragment_id = torch.tensor([find(i) for i in range(n_atoms)], dtype=torch.int64)
-    return fragment_id
+    return torch.tensor([find(i) for i in range(n_atoms)], dtype=torch.int64)

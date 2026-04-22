@@ -37,11 +37,12 @@ import torch
 import yaml
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdmolops
+from rdkit import RDLogger
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.dock import preprocess_complex, sample_unified
-from src.scoring.clustering import select_by_clustering
+from src.scoring.ranking import select_by_clustering
 
 V2_IDS_PATH = Path(__file__).resolve().parent.parent / "data" / "posebusters_v2_ids.txt"
 
@@ -260,6 +261,8 @@ def main() -> None:
     parser.add_argument("--sigma", type=float, default=None)
     parser.add_argument("--num_samples", type=int, default=40)
     parser.add_argument("--cluster_threshold", type=float, default=2.0)
+    parser.add_argument("--smiles_init", action="store_true",
+                        help="Re-generate 3D conformer via ETKDGv3+MMFF (simulate SMILES input)")
     parser.add_argument("--out_dir", type=str, default=None,
                         help="Output directory (default: outputs/eval_{dataset_name})")
     parser.add_argument("--device", type=str, default=None)
@@ -310,8 +313,9 @@ def main() -> None:
         subset_label = f"all ({len(pdb_ids)})"
 
     print(f"\n{dataset_name}: {len(pdb_ids)} complexes [{subset_label}]")
+    smiles_tag = ", smiles_init=True" if args.smiles_init else ""
     print(f"Settings: {args.num_samples} samples, {args.num_steps} steps, "
-          f"schedule={args.time_schedule}, sigma={sigma}")
+          f"schedule={args.time_schedule}, sigma={sigma}{smiles_tag}")
     print(f"Evaluating: {len(REFINE_METHODS)} refinements x {len(SELECT_METHODS)} selections "
           f"= {len(REFINE_METHODS) * len(SELECT_METHODS)} combos\n")
 
@@ -335,6 +339,26 @@ def main() -> None:
 
         try:
             mol = load_ligand(ligand_file, fmt)
+            mol_ref = mol
+
+            # --smiles_init: re-generate 3D conformer (simulate SMILES input)
+            if args.smiles_init:
+                mol_reembed = Chem.RWMol(mol)
+                mol_reembed.RemoveAllConformers()
+                mol_h = Chem.AddHs(mol_reembed)
+                RDLogger.DisableLog("rdApp.*")
+                status = AllChem.EmbedMolecule(mol_h, AllChem.ETKDGv3())
+                RDLogger.EnableLog("rdApp.*")
+                if status != 0:
+                    print(f"[{idx+1:3d}/{len(pdb_ids)}] {pdb_id}: SKIP (ETKDGv3 embed failed)")
+                    failures.append({"pdb_id": pdb_id, "error": "ETKDGv3 embed failed"})
+                    continue
+                AllChem.MMFFOptimizeMolecule(mol_h, maxIters=200)
+                mol_smiles = Chem.RemoveHs(mol_h)
+                # Keep original mol for ref_pos, use mol_smiles for docking
+                mol_ref = mol
+                mol = mol_smiles
+
             poses_dir = out_dir / "poses"
             poses_dir.mkdir(exist_ok=True)
             poses_file = poses_dir / f"{pdb_id}.pt"
@@ -354,9 +378,16 @@ def main() -> None:
                     resumed = True
 
             if not resumed:
-                graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, ligand_has_pose=True)
-                pocket_center = meta["pocket_center"]
-                ref_pos = lig_data["atom_coords"] - pocket_center
+                if args.smiles_init:
+                    # Derive pocket_center + ref_pos from crystal mol, dock with re-embedded mol
+                    _, lig_ref, meta_ref = preprocess_complex(pocket_pdb, mol_ref)
+                    pocket_center = meta_ref["pocket_center"]
+                    ref_pos = lig_ref["atom_coords"] - pocket_center
+                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, pocket_center=pocket_center)
+                else:
+                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol)
+                    pocket_center = meta["pocket_center"]
+                    ref_pos = lig_data["atom_coords"] - pocket_center
 
                 # --- Sample N poses (once) ---
                 raw_poses = []
