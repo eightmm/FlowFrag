@@ -2,6 +2,7 @@
 
 from .vina import VINA_WEIGHTS, compute_vina_features, vina_scoring, precompute_interaction_matrices
 from .ranking import rank_poses, select_by_clustering, cluster_poses
+from .physics_guidance import PhysicsGuidance
 
 __all__ = [
     "VINA_WEIGHTS",
@@ -11,4 +12,5 @@ __all__ = [
     "rank_poses",
     "select_by_clustering",
     "cluster_poses",
+    "PhysicsGuidance",
 ]

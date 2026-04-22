@@ -153,7 +153,6 @@ def preprocess_complex(
 # ODE sampler
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
 def sample_unified(
     model: torch.nn.Module,
     graph: dict[str, torch.Tensor],
@@ -166,6 +165,10 @@ def sample_unified(
     schedule_power: float = 3.0,
     device: torch.device = torch.device("cpu"),
     save_traj: bool = False,
+    phys_guidance=None,
+    phys_lambda_max: float = 0.0,
+    phys_power: float = 2.0,
+    phys_start_t: float = 0.3,
 ) -> dict[str, torch.Tensor]:
     """Run ODE integration for a single complex."""
     from src.inference.sampler import build_time_grid
@@ -234,9 +237,29 @@ def sample_unified(
         batch["t"] = t.view(1, 1)
         batch["frag_id_for_atoms"] = frag_id_d
 
-        out = model(batch)
+        with torch.no_grad():
+            out = model(batch)
+
+        v_use = out["v_pred"]
+        omega_use = out["omega_pred"]
+
+        if (
+            phys_guidance is not None
+            and phys_lambda_max > 0.0
+            and t.item() >= phys_start_t
+        ):
+            lam = phys_lambda_max * (t.item() ** phys_power)
+            v_phys, omega_phys = phys_guidance.compute_drift(
+                atom_pos_t=atom_pos_t,
+                T_frag=T,
+                frag_id=frag_id_d,
+                frag_sizes=frag_sizes_d,
+            )
+            v_use = v_use + lam * v_phys
+            omega_use = omega_use + lam * omega_phys
+
         T, q = integrate_se3_step(
-            T, q, out["v_pred"], out["omega_pred"], dt, frag_sizes=frag_sizes_d,
+            T, q, v_use, omega_use, dt, frag_sizes=frag_sizes_d,
         )
 
     R_final = quaternion_to_matrix(q)
@@ -346,6 +369,18 @@ def main() -> None:
     parser.add_argument("--save_traj", action="store_true")
     parser.add_argument("--out_dir", type=str, default="outputs/docked")
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--phys_guidance", action="store_true",
+                        help="Enable Vina-gradient guidance during ODE sampling.")
+    parser.add_argument("--phys_lambda_max", type=float, default=0.3,
+                        help="Max guidance weight lambda_max (0 = off).")
+    parser.add_argument("--phys_power", type=float, default=2.0,
+                        help="lambda(t) = lambda_max * t^power.")
+    parser.add_argument("--phys_start_t", type=float, default=0.3,
+                        help="Disable guidance for t < phys_start_t.")
+    parser.add_argument("--phys_max_force", type=float, default=10.0,
+                        help="Per-atom force norm clip.")
+    parser.add_argument("--phys_weight_preset", type=str, default="vina",
+                        choices=("vina", "vinardo"))
     args = parser.parse_args()
 
     protein_pdb = Path(args.protein)
@@ -396,6 +431,24 @@ def main() -> None:
 
     sigma = args.sigma if args.sigma is not None else cfg["data"].get("prior_sigma", 5.0)
 
+    phys = None
+    if args.phys_guidance:
+        from src.scoring.physics_guidance import PhysicsGuidance
+        phys = PhysicsGuidance(
+            mol=mol,
+            pocket_pdb=str(protein_pdb),
+            pocket_center=meta["pocket_center"],
+            device=device,
+            pocket_cutoff=args.pocket_cutoff,
+            weight_preset=args.phys_weight_preset,
+            max_force_per_atom=args.phys_max_force,
+        )
+        print(
+            f"Physics guidance ON: lambda_max={args.phys_lambda_max}, "
+            f"power={args.phys_power}, start_t={args.phys_start_t}, "
+            f"preset={args.phys_weight_preset}"
+        )
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -412,6 +465,10 @@ def main() -> None:
             schedule_power=args.schedule_power,
             device=device,
             save_traj=args.save_traj,
+            phys_guidance=phys,
+            phys_lambda_max=args.phys_lambda_max,
+            phys_power=args.phys_power,
+            phys_start_t=args.phys_start_t,
         )
         all_poses.append(result["atom_pos_pred"])
         if args.save_traj:
