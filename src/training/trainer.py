@@ -184,7 +184,6 @@ class Trainer:
         # the scalar path of the model.
         self.use_amp = tcfg.get("use_amp", False)
         self.amp_dtype = torch.bfloat16
-        self.boundary_weight = tcfg.get("boundary_weight", 0.0)
         self.dummy_weight = tcfg.get("dummy_weight", 0.0)
         self.use_time_weighting = tcfg.get("use_time_weighting", True)
 
@@ -314,7 +313,6 @@ class Trainer:
             compute_time_weight,
             atom_position_auxiliary_loss,
             distance_geometry_loss,
-            boundary_alignment_loss,
         )
 
         R_t = None
@@ -374,20 +372,6 @@ class Trainer:
             )
             losses["loss"] = losses["loss"] + self.dg_weight * dg["loss_dg"]
             losses["loss_dg"] = dg["loss_dg"].detach()
-
-        # Boundary alignment loss: cut-bond atom velocities should agree
-        if self.boundary_weight > 0 and "cut_bond_src" in batch:
-            bnd = boundary_alignment_loss(
-                v_pred=out["v_pred"],
-                omega_pred=out["omega_pred"],
-                atom_pos_t=batch["atom_pos_t"],
-                T_frag=batch["T_frag"],
-                fragment_id=batch["frag_id_for_atoms"],
-                cut_src=batch["cut_bond_src"],
-                cut_dst=batch["cut_bond_dst"],
-            )
-            losses["loss"] = losses["loss"] + self.boundary_weight * bnd["loss_boundary"]
-            losses["loss_boundary"] = bnd["loss_boundary"].detach()
 
         return losses
 
@@ -607,7 +591,7 @@ class Trainer:
                                 log_dict["meta/lr_muon"] = lr_vals[0]
                             if grad_norm is not None:
                                 log_dict["step/grad_norm"] = grad_norm
-                            for extra_key in ("loss_omega_dir", "loss_omega_mag", "loss_atom_aux", "loss_dg", "loss_boundary", "cos_omega_world"):
+                            for extra_key in ("loss_omega_dir", "loss_omega_mag", "loss_atom_aux", "loss_dg", "cos_omega_world"):
                                 if extra_key in losses:
                                     log_dict[f"step/{extra_key}"] = losses[extra_key].item()
                             wandb.log(log_dict, step=self.global_step)

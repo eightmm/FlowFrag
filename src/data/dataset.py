@@ -312,15 +312,6 @@ class UnifiedDataset(Dataset):
         out["local_pos"] = local_pos
         out["frag_id_for_atoms"] = frag_id_for_atoms
 
-        # Cut bond indices for boundary alignment loss
-        cut_bond = ligand.get("cut_bond_index")
-        if cut_bond is not None and cut_bond.numel() > 0:
-            out["cut_bond_src"] = cut_bond[0]
-            out["cut_bond_dst"] = cut_bond[1]
-        else:
-            out["cut_bond_src"] = torch.zeros(0, dtype=torch.int64)
-            out["cut_bond_dst"] = torch.zeros(0, dtype=torch.int64)
-
         return out
 
 
@@ -421,15 +412,6 @@ def unified_collate(batch: list[dict[str, Tensor]]) -> dict[str, Tensor]:
         if i < len(batch) - 1:
             atom_offsets.append(atom_offsets[-1] + n_atoms)
     out["atom_batch"] = torch.cat(atom_batch_idx, dim=0)
-
-    # Cut bond indices for boundary alignment loss (offset by atom counts)
-    if "cut_bond_src" in keys:
-        cut_src_parts, cut_dst_parts = [], []
-        for i, b in enumerate(batch):
-            cut_src_parts.append(b["cut_bond_src"] + atom_offsets[i])
-            cut_dst_parts.append(b["cut_bond_dst"] + atom_offsets[i])
-        out["cut_bond_src"] = torch.cat(cut_src_parts, dim=0)
-        out["cut_bond_dst"] = torch.cat(cut_dst_parts, dim=0)
 
     # String keys
     for k in str_keys:

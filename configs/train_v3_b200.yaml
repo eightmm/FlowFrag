@@ -37,7 +37,6 @@ training:
   omega_weight: 8.0
   atom_aux_weight: 0.3
   dg_weight: 3.0
-  boundary_weight: 0.3
   max_grad_norm: 1.0
   scheduler_type: trapezoidal
   warmup_ratio: 0.04             # 1000 step warmup for large-batch + higher LR stability

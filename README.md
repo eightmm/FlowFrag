@@ -206,13 +206,13 @@ Loss composition (per the validated formulation; see
 | `loss_ω` | 8 | Angular velocity MSE, projected onto observable subspace |
 | `loss_atom_aux` | 0.3 | Per-atom rigid-body velocity consistency |
 | `loss_dg` | 3.0 | Inter-fragment pairwise distance MSE after one-step Euler |
-| `loss_boundary` | 0.3 | Cut-bond atom velocity consistency (see note) |
 
-> Note: `loss_boundary` is a self-consistency regulariser that plateaus at a
-> non-zero floor because the ground-truth velocity field derived from
-> per-fragment SLERP does not generally preserve cut-bond continuity during
-> interpolation. Keeping the weight small (0.3) limits interference with
-> the primary flow-matching objective.
+> A cut-bond velocity-alignment regulariser was explored but removed: the
+> ground-truth velocity field derived from per-fragment SLERP does not
+> generally preserve cut-bond continuity during interpolation, so the loss
+> fundamentally conflicts with the flow-matching objective instead of
+> reinforcing it. Inter-fragment geometry is already captured at the
+> distance level by `loss_dg`.
 
 Prior / augmentation choices:
 
