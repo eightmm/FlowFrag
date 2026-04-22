@@ -15,9 +15,11 @@ env/
 .uv/
 uv.lock
 
-# PyTorch
+# PyTorch — ignore intermediate checkpoints; distribute only the weights/ dir
+# (tracked via Git LFS for the published model, see .gitattributes).
 *.pth
 *.pt
+!weights/*.pt
 checkpoints/
 
 # Data

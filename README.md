@@ -133,6 +133,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --dev
 ```
 
+The published inference checkpoint ships in the repo at `weights/best.pt`
+(~76 MB; model + EMA weights only — no optimizer state).
+Load it via any `--checkpoint weights/best.pt` flag.
+
 ## Data
 
 ### Raw layout
@@ -228,12 +232,12 @@ Full val (284 complexes), sharded across ranks:
 # single-prior rollout (fast, matches training-time rollout at S25000)
 uv run torchrun --standalone --nproc_per_node=8 scripts/rollout.py \
     --config configs/train_v3_b200.yaml \
-    --checkpoint outputs/v3_b200/checkpoints/best.pt
+    --checkpoint weights/best.pt
 
 # multi-prior oracle top-1 of N (adds `--num_priors N`)
 uv run torchrun --standalone --nproc_per_node=8 scripts/rollout.py \
     --config configs/train_v3_b200.yaml \
-    --checkpoint outputs/v3_b200/checkpoints/best.pt \
+    --checkpoint weights/best.pt \
     --num_priors 10 \
     --output outputs/v3_b200/rollout_top10.json
 ```
@@ -245,7 +249,7 @@ uv run torchrun --standalone --nproc_per_node=8 scripts/rollout.py \
 uv run python scripts/dock.py \
     --protein pocket.pdb \
     --ligand ligand.sdf \
-    --checkpoint outputs/v3_b200/checkpoints/best.pt \
+    --checkpoint weights/best.pt \
     --config configs/train_v3_b200.yaml \
     --num_samples 10
 
@@ -254,7 +258,7 @@ uv run python scripts/dock.py \
     --protein pocket.pdb \
     --ligand "CCO" \
     --pocket_center 10.0,10.0,10.0 \
-    --checkpoint outputs/v3_b200/checkpoints/best.pt \
+    --checkpoint weights/best.pt \
     --config configs/train_v3_b200.yaml
 ```
 
