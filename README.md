@@ -25,6 +25,13 @@ prior pose to the docked pose.
 - **CASF-2016 core**: **1.07 Å** median RMSD and **89.4 %** < 2 Å success
   (oracle top-1 of 10 priors, N=284), from a 25 K-step training run on
   8× NVIDIA B200.
+- **Astex Diverse & PoseBusters v2 (SMILES-only input)**: 0.77 Å / 1.04 Å
+  median RMSD and 92 % / 80 % < 2 Å success (MMFF-refined oracle of 40 at
+  10 ODE steps) — see [docs/benchmark.md](docs/benchmark.md).
+- **Trajectory visualization**: `scripts/viz_traj.py` renders the ODE flow
+  as an animated GIF with protein contact heatmap, fragment-colored
+  ball-and-stick, 2D molecular sketch, per-frame RMSD curve, and a
+  position-restrained MMFF refinement frame appended at the end.
 
 ## Results
 
@@ -41,8 +48,31 @@ v3 training run (`configs/train_v3_b200.yaml`, 25 K steps, effective batch 512).
 > model's sampling distribution; a downstream scoring function would pick
 > among the N candidates at deployment).
 
-Integration-step sweep on the same checkpoint (single prior per sample,
-showing that the learned velocity field is ODE-smooth — 5 steps are enough):
+### External benchmarks (SMILES-only input)
+
+The model was evaluated on Astex Diverse and PoseBusters v2 with **SMILES
+as the only chemical input** — 3D starting conformers are re-embedded from
+scratch per complex via RDKit ETKDGv3 + MMFF. SMILES come from the RCSB
+chemcomp REST API (cached in `data/{astex,pb}_smiles.json`); RMSD is
+symmetry-aware via RDKit `CalcRMS` and falls back to MCS-matched subset
+for complexes where the SMILES-derived topology differs from the crystal
+(N = 40 samples, 10 ODE steps, position-restrained MMFF refinement).
+
+| Dataset | Selection | Median | Mean | < 1 Å | < 2 Å | < 5 Å |
+|---|---|---|---|---|---|---|
+| Astex (84) | MMFF+Oracle | **0.77** | 0.97 | 70.2 % | **91.7 %** | 98.8 % |
+| Astex (84) | MMFF+Vina | 1.27 | 1.96 | 35.7 % | 71.4 % | 90.5 % |
+| PoseBusters v2 (308) | MMFF+Oracle | **1.04** | 1.38 | 46.8 % | **79.5 %** | 98.7 % |
+| PoseBusters v2 (308) | MMFF+Vina | 1.83 | 2.76 | 18.5 % | 54.9 % | 84.7 % |
+
+Full tables (including `none` refinement and Cluster selection) and a
+gallery of trajectory GIFs across easy → hard cases are in
+[docs/benchmark.md](docs/benchmark.md).
+
+### Integration-step sweep
+
+Same checkpoint, single prior per sample, showing that the learned
+velocity field is ODE-smooth — 5 steps are enough:
 
 | ODE steps | Median RMSD | < 2 Å | < 5 Å |
 |---|---|---|---|
@@ -262,6 +292,33 @@ uv run python scripts/dock.py \
     --config configs/train_v3_b200.yaml
 ```
 
+### Visualizing a trajectory
+
+The ODE sampler can dump every integration step as a multi-conformer SDF:
+
+```bash
+uv run python scripts/dock.py \
+    --protein pocket.pdb --ligand ligand.sdf \
+    --checkpoint weights/best.pt --config configs/train_v3_b200.yaml \
+    --num_samples 1 --num_steps 25 --save_traj --out_dir outputs/traj_demo
+
+uv run python scripts/viz_traj.py \
+    --traj outputs/traj_demo/traj.sdf \
+    --protein pocket.pdb \
+    --crystal_ligand ligand.sdf \
+    --out_dir outputs/traj_demo
+```
+
+This produces `trajectory.gif` showing a 2 × 2 multi-angle 3D view of the
+pose evolution, an RDKit 2D sketch with fragment coloring, a live RMSD
+curve, a progress bar for the flow time t, and a distinct MMFF-refined
+frame appended at the end. Example (Astex `1gkc`):
+
+![1gkc trajectory](docs/assets/traj_1gkc.gif)
+
+More examples spanning easy → hard cases are in
+[docs/benchmark.md](docs/benchmark.md#gallery).
+
 ## Project structure
 
 ```
@@ -280,6 +337,9 @@ flowfrag/
 │   ├── rollout.py                       # val rollout (single or multi-prior oracle top-1)
 │   ├── dock.py                          # dock a single complex
 │   ├── eval_benchmark.py                # PoseBusters / Astex benchmark eval
+│   ├── fetch_astex_smiles.py            # fetch canonical SMILES for Astex from RCSB
+│   ├── fetch_pb_smiles.py                # fetch canonical SMILES for PoseBusters from RCSB
+│   ├── viz_traj.py                       # render ODE trajectory as annotated GIF
 │   └── analyze_target_distribution.py   # T_1 distribution → prior_sigma tuning
 ├── configs/             # train_v3_b200.yaml (training config used to produce `best.pt`)
 ├── data/splits/         # deterministic train/val splits (PDBbind 2020 → CASF-2016 core)
@@ -293,6 +353,8 @@ flowfrag/
 |---|---|
 | [Architecture](docs/architecture.md) | Model architecture, graph structure, design choices |
 | [Dataset](docs/dataset.md) | Data format, preprocessing pipeline, graph topology |
+| [Benchmark](docs/benchmark.md) | Astex / PoseBusters v2 results, SMILES-only input, trajectory gallery |
+| [Scoring](docs/scoring.md) | Vina energy, PoseBusters validity, combined pose ranking |
 
 ## Citation
 
