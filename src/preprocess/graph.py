@@ -18,29 +18,11 @@ from .ligand import OTHER_ELEMENT_IDX, OTHER_HYBRID_IDX
 from .protein import UNK_ATOM_TOKEN, UNK_RES_IDX
 
 
-EDGE_TYPES: dict[str, int] = {
-    "ligand_bond": 0,
-    "ligand_tri": 1,
-    "ligand_cut": 2,
-    "ligand_atom_frag": 3,
-    "ligand_frag_frag": 4,
-    "protein_bond": 5,
-    "protein_atom_res": 6,
-    "protein_res_res": 7,
-    "protein_res_frag": 8,
-}
-
-NODE_TYPES: dict[str, int] = {
-    "ligand_atom": 0,
-    "ligand_fragment": 1,
-    "protein_atom": 2,
-    "protein_res": 3,
-}
-
-DYNAMIC_EDGE_TYPES: set[int] = {
-    EDGE_TYPES["ligand_frag_frag"],
-    EDGE_TYPES["protein_res_frag"],
-}
+from .graph_types import (  # noqa: F401  (re-exported for callers)
+    DYNAMIC_EDGE_TYPES,
+    EDGE_TYPES,
+    NODE_TYPES,
+)
 
 
 def _frag_hop_distances(n_frag: int, adj_index: torch.Tensor) -> torch.Tensor:

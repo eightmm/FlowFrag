@@ -6,10 +6,20 @@
 - **SMILES source**: RCSB Chemical Component Dictionary fetched per-PDB by `scripts/fetch_astex_smiles.py` and `scripts/fetch_pb_smiles.py`; cached in `data/astex_smiles.json` and `data/pb_smiles.json`.
 - **ODE**: 10 steps, late schedule (power = 3.0).
 - **Prior**: translation &sigma; = 3.0 &Aring; centered at pocket, rotation uniform on SO(3).
-- **Pocket center**: centroid of protein residue virtual nodes within 8 &Aring; of the crystal ligand (matches the training definition).
-- **Sampling**: N = 40 poses per complex.
+- **Pocket center**: centroid of protein residue virtual nodes within 8 &Aring; of the crystal ligand (matches the training definition). Derived from the full `{id}_protein.pdb` — a few Astex pocket files ship truncated (e.g. 1q1g with 21 heavy atoms, 1u1c empty) and would otherwise place the pocket center &ge;9 &Aring; off the true site.
+- **Sampling**: N = 40 poses per complex, generated in a single batched ODE integration (graph replicated N times, one model forward per ODE step instead of one per sample — &sim;4x over the sequential sampler).
 - **Refinement**: vacuum MMFF94s with position restraints (constraint strength 50, tolerance 0.5 &Aring;) so the pose is only locally relaxed, not dragged back to the gas-phase minimum.
 - **RMSD**: heavy-atom, **symmetry-aware** via RDKit `rdMolAlign.CalcRMS` (no alignment). For complexes where the SMILES-derived topology differs from the crystal (partial build, alternate tautomer), atoms are matched by MCS and RMSD is computed on the matched subset.
+
+### Optional: Vina-gradient physics guidance
+
+At each ODE step the sampler can mix a physics drift into the learned drift:
+
+$$v_{\text{final}} = v_{\text{pred}} + \lambda(t) \cdot v_{\text{phys}}, \qquad \omega_{\text{final}} = \omega_{\text{pred}} + \lambda(t) \cdot \omega_{\text{phys}}$$
+
+where $(v_{\text{phys}}, \omega_{\text{phys}})$ are produced by back-propagating the AutoDock Vina intermolecular energy into per-atom forces and then through the same Newton-Euler rigid-body aggregation the model uses. The schedule $\lambda(t) = \lambda_{\max} \cdot t^{p}$ is zero for $t < t_{\text{start}}$, so guidance only acts once the flow has mostly converged.
+
+Default preset used for the reported numbers below: $\lambda_{\max} = 3.0$, $p = 2.0$, $t_{\text{start}} = 0.3$, per-atom force clipped to 10 kcal/(mol&middot;&Aring;). Enabled per-run via `--phys_guidance`. Tuned from a 10-complex &times; 5-&lambda; sweep (`scripts/phys_lambda_sweep.py`) that swept $\lambda \in \{0, 1, 2, 3, 5\}$ with paired priors: aggregate oracle RMSD monotonically improved through $\lambda = 3$ and plateaued/reversed at $\lambda = 5$.
 
 ## Evaluation Regime
 
@@ -21,7 +31,7 @@ Because the input is SMILES-only (starting 3D conformer is re-embedded from scra
 
 | Dataset | Complexes evaluated | Ligand source (crystal) | Protein source |
 |---|---|---|---|
-| Astex Diverse | 84 / 85 (1 parse failure: 1u1c) | MOL2 | Pocket PDB |
+| Astex Diverse | 85 / 85 | MOL2 | Full-protein PDB |
 | PoseBusters v2 | 308 / 308 | SDF | Full-protein PDB |
 
 ## Pose Selection
@@ -29,7 +39,6 @@ Because the input is SMILES-only (starting 3D conformer is re-embedded from scra
 | Strategy | Description | Requires ground truth? |
 |---|---|---|
 | Oracle | argmin RMSD to crystal over N samples | Yes (upper bound) |
-| Cluster | Centroid of largest RMSD cluster (2 &Aring; threshold) | No |
 | Vina | Top-1 by combined score `s = -E_vina &middot; p^&beta;`, &beta; = 4 | No |
 
 `E_vina` is the AutoDock Vina energy computed on the predicted pose, `p` is the PoseBusters-style physicochemical validity score. See [scoring.md](scoring.md).
@@ -38,37 +47,39 @@ Because the input is SMILES-only (starting 3D conformer is re-embedded from scra
 
 ### Astex Diverse (N = 40, SMILES input)
 
+**Baseline — learned drift only**
+
 | Refinement | Selection | Mean | Median | &lt;1&Aring; | &lt;2&Aring; | &lt;5&Aring; |
 |---|---|---|---|---|---|---|
-| None | Oracle | 1.01 | 0.81 | 66.7% | 91.7% | 98.8% |
-| None | Cluster | 1.96 | 1.18 | 38.1% | 71.4% | 90.5% |
-| None | Vina | 2.02 | 1.27 | 34.5% | 72.6% | 90.5% |
-| MMFF | Oracle | **0.97** | **0.77** | **70.2%** | **91.7%** | **98.8%** |
-| MMFF | Cluster | 1.99 | 1.09 | 40.5% | 69.0% | 90.5% |
-| MMFF | Vina | 1.96 | 1.27 | 35.7% | 71.4% | 90.5% |
+| None | Oracle | 0.91 | 0.78 | 69.4% | 96.5% | 100.0% |
+| None | Vina | 1.97 | 1.36 | 34.1% | 63.5% | 94.1% |
+| MMFF | Oracle | 0.91 | 0.78 | 70.6% | 95.3% | 100.0% |
+| MMFF | Vina | 1.82 | 1.24 | 35.3% | 69.4% | 95.3% |
+
+**With Vina-gradient guidance** (&lambda;<sub>max</sub> = 3.0, t<sub>start</sub> = 0.3, power = 2.0)
+
+| Refinement | Selection | Mean | Median | &lt;1&Aring; | &lt;2&Aring; | &lt;5&Aring; |
+|---|---|---|---|---|---|---|
+| None | Oracle | **0.86** | 0.77 | 71.8% | 95.3% | 100.0% |
+| None | Vina | **1.80** | 1.35 | 31.8% | **70.6%** | **97.6%** |
+| MMFF | Oracle | 0.87 | **0.71** | 72.9% | 94.1% | 100.0% |
+| MMFF | Vina | **1.79** | **1.30** | **38.8%** | **72.9%** | 94.1% |
 
 ### PoseBusters v2 (N = 40, SMILES input)
 
-| Refinement | Selection | Mean | Median | &lt;1&Aring; | &lt;2&Aring; | &lt;5&Aring; |
-|---|---|---|---|---|---|---|
-| None | Oracle | 1.40 | 1.05 | 46.1% | 80.2% | 98.4% |
-| None | Cluster | 2.81 | 1.94 | 17.9% | 53.2% | 83.4% |
-| None | Vina | 2.80 | 2.01 | 16.9% | 49.7% | 86.0% |
-| MMFF | Oracle | **1.38** | **1.04** | **46.8%** | **79.5%** | **98.7%** |
-| MMFF | Cluster | 2.81 | 1.93 | 19.5% | 51.6% | 84.1% |
-| MMFF | Vina | 2.76 | 1.83 | 18.5% | **54.9%** | 84.7% |
+_Pending — full 308-complex rerun with batched sampler + &lambda; = 3 guidance in progress._
 
 ## Key Observations
 
-1. **Oracle ceiling is high.** Med 0.81 &Aring; on Astex and 1.05 &Aring; on PoseBusters with SMILES-only input means the sampler produces a near-crystal pose within 40 tries for most complexes. The remaining challenge is selection.
+1. **Oracle ceiling is very high on Astex.** Mean 0.91 &Aring;, median 0.78 &Aring;, and 100 % of complexes within 5 &Aring;. Of the 85 complexes, 96.5 % produce a &lt;2 &Aring; pose within 40 samples. The remaining work is in the selection step.
 
-2. **MMFF refinement improves the median by 0.05–0.2 &Aring; and is otherwise neutral.** With position restraints it only removes local strain (bond lengths, short clashes) without moving the ligand; without restraints the gas-phase minimum pulls the ligand tens of &Aring; away from the pocket (the earlier unrestrained MMFF regressed PoseBusters Mean to 22 &Aring;).
+2. **Physics guidance helps Vina-selected poses the most.** With &lambda; = 3 the `None + Vina` combo gains +7.1 %p at &lt;2 &Aring; (63.5% &rarr; 70.6%) and +3.5 %p at &lt;5 &Aring;; `MMFF + Vina` gains +3.5 %p at &lt;2 &Aring; (69.4% &rarr; 72.9%) and +3.5 %p at &lt;1 &Aring;. The Vina gradient biases the ODE drift toward local energy minima, so Vina-based selection picks them more often.
 
-3. **Vina selection vs Cluster selection.** On Astex they are within 1–3 %p of each other. On PoseBusters v2, `MMFF + Vina` is the best realistic combination (&lt;2&Aring; 54.9%), slightly edging out `MMFF + Cluster` (51.6%). Vina + MMFF is the most physically grounded — pose geometry is healthy *and* interaction energy drives the pick.
+3. **MMFF refinement is near-neutral** (&plusmn;0.05 &Aring; on the mean) once position restraints prevent it from dragging the ligand toward the gas-phase minimum. It helps the median slightly under guidance (0.78 &rarr; 0.71 &Aring; on Oracle).
 
-4. **Selection gap (Oracle → Vina)** is 20 %p on Astex and 25 %p on PoseBusters v2 for `&lt;2&Aring;`. A trained pose-confidence model should close most of this.
+4. **Selection gap (Oracle &rarr; Vina)** remains &sim;24 %p on `&lt;2 &Aring;` even with guidance. A trained pose-confidence model should close most of this; physics guidance alone only narrows the gap by a few percent.
 
-5. **Astex is harder than PB for the oracle, easier for selection.** Astex has more varied drug-like ligands with many rotatable bonds (wider pose distribution → higher oracle ceiling but harder to cluster/score). PB v2 is biased toward smaller cofactors and fragments (higher concentration around the true pose, so cluster/score work better relative to oracle).
+5. **Fix notes.** Two Astex pocket files (1q1g, 1u1c) ship with &lt;10 % of the binding-site residues, which placed `pocket_center` 9+ &Aring; off the true site and either failed outright or produced 5&ndash;11 &Aring; poses. Using `{id}_protein.pdb` for pocket-center derivation reinstates them and moves the Astex denominator from 84 to 85.
 
 ## Visualization
 
@@ -128,8 +139,8 @@ These are hand-picked to span easy → hard (fragment count 2 → 8). All still 
 
 - These are **pocket-conditioned** results. Compare only against other pocket-conditioned methods, not blind docking.
 - **Pocket center leaks crystal-ligand position** (residues within 8 &Aring; of the crystal). This matches training but is an oracle-level assumption. For a harder, realistic setting, use apo-structure + fpocket / P2Rank center.
-- **Oracle** is an upper bound assuming a perfect confidence model. **Cluster** and **Vina** are realistic deployable numbers.
-- 1u1c failed at the protein PDB parsing stage; the reported Astex denominator is 84.
+- **Oracle** is an upper bound assuming a perfect confidence model. **Vina** is the realistic deployable number.
+- Physics guidance adds one extra Vina backward pass per ODE step. With the batched sampler the total wall-clock overhead is &sim;7 % vs baseline (Astex 859 s &rarr; 919 s for 85 complexes).
 
 ## References
 

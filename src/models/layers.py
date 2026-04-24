@@ -51,18 +51,47 @@ def sinusoidal_embedding(t: Tensor, dim: int = 32) -> Tensor:
 
 
 def scatter_mean(src: Tensor, idx: Tensor, n: int) -> Tensor:
-    """Scatter-mean aggregation.
+    """Scatter-mean aggregation over per-element segment ids.
 
     Args:
         src: Source features ``[E, D]``.
-        idx: Target indices ``[E]``.
-        n: Number of target nodes.
+        idx: Target segment index per row ``[E]``.
+        n: Number of target segments.
 
     Returns:
-        ``[n, D]``.
+        ``[n, D]`` mean over segments (zero for empty segments).
     """
     out = torch.zeros(n, src.shape[-1], device=src.device, dtype=src.dtype)
     count = torch.zeros(n, 1, device=src.device, dtype=src.dtype)
     out.scatter_add_(0, idx.unsqueeze(-1).expand_as(src), src)
-    count.scatter_add_(0, idx.unsqueeze(-1), torch.ones(idx.shape[0], 1, device=src.device, dtype=src.dtype))
+    count.scatter_add_(
+        0, idx.unsqueeze(-1),
+        torch.ones(idx.shape[0], 1, device=src.device, dtype=src.dtype),
+    )
     return out / count.clamp_min(1.0)
+
+
+def segment_mean_csr(x: Tensor, ptr: Tensor) -> Tensor:
+    """Mean over CSR-style segments.  ``x: [N] or [N, D]``, ``ptr: [P+1]`` → ``[P]`` or ``[P, D]``."""
+    sizes = ptr[1:] - ptr[:-1]
+    P = ptr.shape[0] - 1
+    seg_id = torch.repeat_interleave(torch.arange(P, device=x.device), sizes)
+    if x.ndim == 1:
+        out = torch.zeros(P, device=x.device, dtype=x.dtype)
+        out.index_add_(0, seg_id, x)
+        return out / sizes.clamp_min(1).to(x.dtype)
+    out = torch.zeros(P, x.shape[-1], device=x.device, dtype=x.dtype)
+    out.index_add_(0, seg_id, x)
+    return out / sizes.clamp_min(1).unsqueeze(-1).to(x.dtype)
+
+
+def segment_max_csr(x: Tensor, ptr: Tensor) -> Tensor:
+    """Max over CSR-style segments.  ``x: [N, D]``, ``ptr: [P+1]`` → ``[P, D]`` (empty segments → 0)."""
+    sizes = ptr[1:] - ptr[:-1]
+    P = ptr.shape[0] - 1
+    seg_id = torch.repeat_interleave(torch.arange(P, device=x.device), sizes)
+    out = torch.full((P, x.shape[-1]), float("-inf"), device=x.device, dtype=x.dtype)
+    idx = seg_id.unsqueeze(-1).expand_as(x)
+    out.scatter_reduce_(0, idx, x, reduce="amax", include_self=False)
+    empty = (sizes == 0).unsqueeze(-1)
+    return torch.where(empty, torch.zeros_like(out), out)

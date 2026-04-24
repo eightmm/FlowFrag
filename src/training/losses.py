@@ -162,48 +162,6 @@ def flow_matching_loss(
     return result
 
 
-def atom_velocity_loss(
-    v_atom_pred: Tensor,
-    v_atom_target: Tensor,
-    v_frag_pred: Tensor,
-    omega_pred: Tensor,
-    v_frag_target: Tensor,
-    omega_target: Tensor,
-    frag_sizes: Tensor,
-) -> dict[str, Tensor]:
-    """Loss for atom_velocity mode: MSE on per-atom velocities.
-
-    Also computes fragment-level v/omega metrics for monitoring.
-    """
-    # Primary loss: per-atom velocity MSE
-    loss_atom = torch.mean((v_atom_pred - v_atom_target) ** 2)
-
-    # Fragment-level metrics for monitoring (not in loss)
-    loss_v = torch.mean((v_frag_pred - v_frag_target) ** 2).detach()
-
-    multi_mask = frag_sizes > 1
-    if multi_mask.any():
-        loss_omega = torch.mean((omega_pred[multi_mask] - omega_target[multi_mask]) ** 2).detach()
-    else:
-        loss_omega = torch.zeros(1, device=v_atom_pred.device, dtype=v_atom_pred.dtype).squeeze()
-
-    cos = torch.nn.functional.cosine_similarity
-    cos_v = cos(v_frag_pred, v_frag_target, dim=-1).mean().detach()
-    if multi_mask.any():
-        cos_omega = cos(omega_pred[multi_mask], omega_target[multi_mask], dim=-1).mean().detach()
-    else:
-        cos_omega = torch.zeros(1, device=v_atom_pred.device, dtype=v_atom_pred.dtype).squeeze()
-
-    return {
-        "loss": loss_atom,
-        "loss_v": loss_v,
-        "loss_omega": loss_omega,
-        "cos_v": cos_v,
-        "cos_omega": cos_omega,
-        "loss_atom": loss_atom.detach(),
-    }
-
-
 def distance_geometry_loss(
     v_pred: Tensor,
     omega_pred: Tensor,
@@ -351,54 +309,116 @@ def atom_position_auxiliary_loss(
     return {"loss_atom_aux": loss}
 
 
-def dummy_position_loss(
-    v_pred: Tensor,
-    omega_pred: Tensor,
-    atom_pos_t: Tensor,
-    T_frag: Tensor,
-    fragment_id: Tensor,
-    dummy_to_real: Tensor,
-) -> dict[str, Tensor]:
-    """Position-matching loss between dummy atoms and their real counterparts.
+# ---------------------------------------------------------------------------
+# Confidence head losses (per-atom + per-fragment + per-pose + pairwise rank)
+# ---------------------------------------------------------------------------
+def _pairwise_rank_loss(
+    pred_pose: Tensor,         # [P] predicted scalar (lower = better)
+    target_pose: Tensor,       # [P] true scalar (lower = better)
+    pose_cx_id: Tensor,        # [P] int complex id per pose
+    margin: float = 0.1,
+    min_gap: float = 0.3,      # only use pairs where true gap > min_gap (Å)
+) -> Tensor:
+    """Margin ranking loss over pose pairs within the same complex.
 
-    Each dummy atom moves with its assigned fragment.  Its real counterpart
-    moves with the original fragment.  This loss penalizes the difference in
-    their predicted next-step velocities, forcing adjacent fragments to agree
-    at the boundary.
-
-    Args:
-        v_pred: Predicted fragment translation velocity ``[N_frag, 3]``.
-        omega_pred: Predicted fragment angular velocity ``[N_frag, 3]``.
-        atom_pos_t: Current atom positions ``[N_atom, 3]``.
-        T_frag: Current fragment centroids ``[N_frag, 3]``.
-        fragment_id: Fragment assignment per atom ``[N_atom]``.
-        dummy_to_real: ``[N_dummy, 2]`` — ``(dummy_idx, real_idx)`` pairs.
-
-    Returns:
-        Dict with ``"loss_dummy"`` (scalar, gradients enabled).
+    For (i, j) in the same complex with true_rmsd[i] < true_rmsd[j], enforce
+    pred[i] < pred[j] via margin ranking. Pairs with small true gap are
+    filtered so noise does not dominate.
     """
-    zero = torch.zeros(1, device=v_pred.device, dtype=v_pred.dtype).squeeze()
-    if dummy_to_real.shape[0] == 0:
-        return {"loss_dummy": zero}
+    import torch.nn.functional as F
 
-    d_idx = dummy_to_real[:, 0]  # dummy atom indices
-    r_idx = dummy_to_real[:, 1]  # real counterpart indices
+    P = pred_pose.shape[0]
+    if P < 2:
+        return pred_pose.new_zeros(())
 
-    # Velocity of dummy atom (moved by its assigned fragment)
-    r_d = atom_pos_t[d_idx] - T_frag[fragment_id[d_idx]]
-    v_dummy = v_pred[fragment_id[d_idx]] + torch.cross(omega_pred[fragment_id[d_idx]], r_d, dim=-1)
+    losses: list[Tensor] = []
+    for cx in torch.unique(pose_cx_id):
+        idx = (pose_cx_id == cx).nonzero(as_tuple=True)[0]
+        if idx.numel() < 2:
+            continue
+        i, j = torch.combinations(idx, 2).unbind(-1)
+        true_gap = target_pose[j] - target_pose[i]
+        swap = true_gap < 0
+        a = torch.where(swap, j, i)
+        b = torch.where(swap, i, j)
+        gap = (target_pose[b] - target_pose[a]).abs()
+        keep = gap > min_gap
+        if not keep.any():
+            continue
+        pa, pb = pred_pose[a[keep]], pred_pose[b[keep]]
+        losses.append(F.relu(pa - pb + margin).mean())
+    if not losses:
+        return pred_pose.new_zeros(())
+    return torch.stack(losses).mean()
 
-    # Velocity of real counterpart (moved by its own fragment)
-    r_r = atom_pos_t[r_idx] - T_frag[fragment_id[r_idx]]
-    v_real = v_pred[fragment_id[r_idx]] + torch.cross(omega_pred[fragment_id[r_idx]], r_r, dim=-1)
 
-    loss = torch.mean((v_dummy - v_real) ** 2)
-    return {"loss_dummy": loss}
+def confidence_multitask_loss(
+    out: dict[str, Tensor],
+    target_atom_disp: Tensor,      # [N]
+    target_frag_rmsd: Tensor,      # [F]
+    target_pose_rmsd: Tensor,      # [P]
+    pose_cx_id: Tensor | None = None,   # [P]  for pairwise ranking
+    *,
+    w_atom: float = 0.3,
+    w_plddt: float = 0.5,
+    w_frag: float = 0.5,
+    w_frag_bad: float = 0.3,
+    w_pose: float = 1.0,
+    w_pose_prob: float = 0.3,
+    w_rank: float = 1.0,
+    threshold: float = 2.0,
+) -> dict[str, Tensor]:
+    """Per-atom + per-fragment + per-pose regression/classification + pairwise rank."""
+    import torch.nn.functional as F
+
+    losses: dict[str, Tensor] = {}
+
+    tgt_atom_log1p = torch.log1p(target_atom_disp.clamp_min(0))
+    losses["atom"] = F.huber_loss(out["atom_disp_log1p"], tgt_atom_log1p)
+
+    tgt_atom_ok = (target_atom_disp < threshold).float()
+    losses["plddt"] = F.binary_cross_entropy_with_logits(
+        out["atom_plddt_logit"], tgt_atom_ok,
+    )
+
+    tgt_frag_log1p = torch.log1p(target_frag_rmsd.clamp_min(0))
+    losses["frag"] = F.huber_loss(out["frag_rmsd_log1p"], tgt_frag_log1p)
+
+    tgt_frag_bad = (target_frag_rmsd > threshold).float()
+    losses["frag_bad"] = F.binary_cross_entropy_with_logits(
+        out["frag_bad_logit"], tgt_frag_bad,
+    )
+
+    tgt_pose_log1p = torch.log1p(target_pose_rmsd.clamp_min(0))
+    losses["pose"] = F.huber_loss(out["pose_rmsd_log1p"], tgt_pose_log1p)
+
+    tgt_pose_ok = (target_pose_rmsd < threshold).float()
+    losses["pose_prob"] = F.binary_cross_entropy_with_logits(
+        out["pose_prob_logit"], tgt_pose_ok,
+    )
+
+    if pose_cx_id is not None and w_rank > 0:
+        losses["rank"] = _pairwise_rank_loss(
+            out["pose_rmsd_log1p"], tgt_pose_log1p, pose_cx_id,
+        )
+    else:
+        losses["rank"] = out["pose_rmsd_log1p"].new_zeros(())
+
+    total = (
+        w_atom * losses["atom"] + w_plddt * losses["plddt"]
+        + w_frag * losses["frag"] + w_frag_bad * losses["frag_bad"]
+        + w_pose * losses["pose"] + w_pose_prob * losses["pose_prob"]
+        + w_rank * losses["rank"]
+    )
+    return {
+        "loss": total,
+        **{f"loss_{k}": v.detach() for k, v in losses.items()},
+    }
 
 
 __all__ = [
     "flow_matching_loss",
-    "atom_velocity_loss",
     "atom_position_auxiliary_loss",
-    "dummy_position_loss",
+    "distance_geometry_loss",
+    "confidence_multitask_loss",
 ]

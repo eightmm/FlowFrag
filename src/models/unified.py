@@ -122,20 +122,17 @@ def newton_euler_aggregate(
 
 
 # ---------------------------------------------------------------------------
-# Node type constants (must match build_static_complex_graph)
+# Node / edge type constants — single source of truth in graph_types.
 # ---------------------------------------------------------------------------
-NTYPE_LIG_ATOM = 0
-NTYPE_FRAGMENT = 1
-NTYPE_PROT_ATOM = 2
-NTYPE_PROT_RES = 3
-NUM_NODE_TYPES = 4
-
-# Edge type names (from src/preprocess/graph.py EDGE_TYPES)
-# 0=ligand_bond, 1=ligand_tri, 2=ligand_cut, 3=ligand_atom_frag,
-# 4=ligand_frag_frag, 5=protein_bond, 6=protein_atom_res,
-# 7=protein_res_res, 8=protein_res_frag, 9=dynamic_contact (runtime)
-ETYPE_DYNAMIC_CONTACT = 9
-NUM_EDGE_TYPES = 10
+from ..preprocess.graph_types import (  # noqa: E402
+    ETYPE_DYNAMIC_CONTACT,
+    NTYPE_FRAGMENT,
+    NTYPE_LIG_ATOM,
+    NTYPE_PROT_ATOM,
+    NTYPE_PROT_RES,
+    NUM_EDGE_TYPES,
+    NUM_NODE_TYPES,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -464,8 +461,15 @@ class UnifiedFlowFrag(nn.Module):
         self.atom_head_act = EquivariantActivation(head_irreps)
         self.f_atom_linear = cuet.Linear(head_irreps, cue.Irreps("O3", "1x1o"), layout=cue.mul_ir, method="fused_tp")
 
-    def forward(self, batch: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Forward pass on a collated batch from UnifiedDataset."""
+    def forward(
+        self, batch: dict[str, Tensor], return_hidden: bool = False
+    ) -> dict[str, Tensor]:
+        """Forward pass on a collated batch from UnifiedDataset.
+
+        If ``return_hidden`` is True, also returns the final per-node irrep
+        tensor ``h`` (concatenation of scalar + non-scalar blocks, layout
+        consistent with ``node_irreps``).
+        """
         device = batch["node_coords"].device
         n_nodes = batch["node_coords"].shape[0]
         coords = batch["node_coords"]
@@ -589,11 +593,14 @@ class UnifiedFlowFrag(nn.Module):
             batch["frag_id_for_atoms"], n_frag, frag_sizes,
         )
 
-        return {
+        result = {
             "v_pred": v_pred,
             "omega_pred": omega_pred,
             "P_observable": P_observable,
         }
+        if return_hidden:
+            result["h"] = h
+        return result
 
 
 __all__ = ["UnifiedFlowFrag"]

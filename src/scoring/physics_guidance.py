@@ -39,7 +39,7 @@ class PhysicsGuidance:
         pocket_pdb: str | Path,
         pocket_center: torch.Tensor,
         device: torch.device,
-        pocket_cutoff: float = 8.0,
+        pocket_cutoff: float = 15.0,
         weight_preset: str = "vina",
         max_force_per_atom: float = 10.0,
     ):
@@ -102,5 +102,57 @@ class PhysicsGuidance:
             frag_id=frag_id,
             n_frag=n_frag,
             frag_sizes=frag_sizes,
+        )
+        return v_phys.detach(), omega_phys.detach()
+
+    @torch.enable_grad()
+    def compute_drift_batched(
+        self,
+        atom_pos_t_flat: torch.Tensor,
+        T_frag_flat: torch.Tensor,
+        frag_id_flat: torch.Tensor,
+        frag_sizes_flat: torch.Tensor,
+        batch_size: int,
+        n_atoms_per_sample: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Batched Vina gradient across ``batch_size`` replicas of the same ligand.
+
+        ``atom_pos_t_flat`` has shape ``[batch_size * n_atoms_per_sample, 3]``;
+        fragment indices in ``frag_id_flat`` are already offset per sample (i.e.
+        sample ``i`` points into ``[i * n_frag, (i+1) * n_frag)``).
+
+        Returns ``(v_phys, omega_phys)`` of shape ``[batch_size * n_frag, 3]``.
+        """
+        x = (
+            atom_pos_t_flat.detach().clone()
+            .view(batch_size, n_atoms_per_sample, 3)
+            .requires_grad_(True)
+        )
+
+        energy = vina_scoring(
+            x,
+            self.pocket_coords,
+            self.precomputed,
+            weight_preset=self.weight_preset,
+            num_rotatable_bonds=None,
+        )  # [batch_size]
+
+        (grad,) = torch.autograd.grad(
+            energy.sum(), x, create_graph=False, retain_graph=False,
+        )
+        f_atom = -grad.detach().reshape(batch_size * n_atoms_per_sample, 3)
+
+        norms = f_atom.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        scale = (self.max_force_per_atom / norms).clamp(max=1.0)
+        f_atom = f_atom * scale
+
+        n_frag_total = int(frag_sizes_flat.shape[0])
+        v_phys, omega_phys, _ = newton_euler_aggregate(
+            f_atom=f_atom,
+            atom_pos=atom_pos_t_flat.detach(),
+            T_frag=T_frag_flat.detach(),
+            frag_id=frag_id_flat,
+            n_frag=n_frag_total,
+            frag_sizes=frag_sizes_flat,
         )
         return v_phys.detach(), omega_phys.detach()

@@ -1,13 +1,11 @@
 """AutoDock Vina scoring: weights, molecular features, and energy computation.
 
-Adapted from https://github.com/eightmm/lig-mcs-align
+Adapted from https://github.com/eightmm/lig-mcs-align and refined to match the
+AutoDock4 atom-type conventions the reference Vina uses.
 """
 
-import os
-
 import torch
-from rdkit import Chem, RDConfig
-from rdkit.Chem import ChemicalFeatures
+from rdkit import Chem
 
 # ---------------------------------------------------------------------------
 # Weight parameters
@@ -23,11 +21,11 @@ VINA_WEIGHTS = {
         "rot": 0.05846,
     },
     "vinardo": {
-        "gauss1": -0.0356,
+        "gauss1": -0.045,
         "gauss2": 0.0,
-        "repulsion": 0.840,
-        "hydrophobic": -0.0351,
-        "hbond": -0.587,
+        "repulsion": 0.800,
+        "hydrophobic": -0.035,
+        "hbond": -0.600,
         "rot": 0.05846,
     },
 }
@@ -36,45 +34,123 @@ VINA_WEIGHTS = {
 # Feature extraction
 # ---------------------------------------------------------------------------
 
-_FDEF_PATH = os.path.join(RDConfig.RDDataDir, "BaseFeatures.fdef")
-_FACTORY = ChemicalFeatures.BuildFeatureFactory(_FDEF_PATH)
+# AutoDock4 van der Waals radii (Å). Source: Vina `atom_constants.h` — the
+# same table the reference AutoDock Vina uses when typing AD4 atoms.
+# RDKit's Bondi radii (GetRvdw) are ~0.2-0.3Å smaller for C/S/halogens and
+# would flatten the gauss1/repulsion terms. Keyed by atomic number.
+AD4_VDW_RADII = {
+    1: 1.00,    # H  (HD)
+    6: 2.00,    # C  (aliphatic and aromatic A share R)
+    7: 1.75,    # N  (N and NA share R)
+    8: 1.60,    # O  (O and OA share R)
+    9: 1.545,   # F
+    15: 2.10,   # P
+    16: 2.00,   # S  (S and SA share R)
+    17: 2.045,  # Cl
+    34: 1.90,   # Se
+    35: 2.165,  # Br
+    53: 2.36,   # I
+}
+_FALLBACK_VDW = 2.00  # generic heavy atom
+
+
+def _classify_atom_ad4(atom: Chem.Atom) -> tuple[float, float, float]:
+    """Return (hydrophobic, hbond-donor, hbond-acceptor) flags for one atom.
+
+    Follows AutoDock4 typing conventions as implemented in Meeko/Vina:
+    - Carbon is hydrophobic unless bonded to a polar heteroatom (N/O/S/P).
+    - Halogens (F/Cl/Br/I) are hydrophobic only.
+    - Oxygen is always an acceptor; also a donor if it carries H (hydroxyl).
+    - Nitrogen is a donor if it carries H (amine, amide, indole), an acceptor
+      if it has no H and is neutral (pyridine, tertiary amine lone pair).
+    - Sulfur is hydrophobic; thiol S is also a donor.
+    """
+    z = atom.GetAtomicNum()
+    # Count both implicit and explicit H (PDB input sometimes leaves a polar H
+    # in the graph even after removeHs=True); default includeNeighbors=False
+    # would miss those and mis-classify the atom as an acceptor-only.
+    n_h = atom.GetTotalNumHs(includeNeighbors=True)
+    charge = atom.GetFormalCharge()
+
+    if z in (9, 17, 35, 53):  # halogens
+        return (1.0, 0.0, 0.0)
+    if z == 6:  # carbon
+        has_polar_nbr = any(
+            nbr.GetAtomicNum() in (7, 8, 15, 16) for nbr in atom.GetNeighbors()
+        )
+        return (0.0 if has_polar_nbr else 1.0, 0.0, 0.0)
+    if z == 16:  # sulfur
+        return (1.0, 1.0 if n_h > 0 else 0.0, 0.0)
+    if z == 8:  # oxygen
+        return (0.0, 1.0 if n_h > 0 else 0.0, 1.0)
+    if z == 7:  # nitrogen
+        is_donor = n_h > 0 and charge >= 0
+        # Acceptor: sp2/sp3 N with a lone pair (no H, not protonated).
+        is_acceptor = n_h == 0 and charge <= 0
+        return (0.0, float(is_donor), float(is_acceptor))
+    return (0.0, 0.0, 0.0)
 
 
 def compute_vina_features(mol: Chem.Mol, device: torch.device) -> dict:
-    """Extract atomic features for Vina scoring: vdW radii, hydrophobic, HBD, HBA."""
-    num_atoms = mol.GetNumAtoms()
-    ptable = Chem.GetPeriodicTable()
+    """Extract per-atom AD4 features for Vina: vdW radii, hydrophobic, HBD, HBA.
 
-    radii = torch.zeros(num_atoms, dtype=torch.float32, device=device)
-    hydro = torch.zeros(num_atoms, dtype=torch.float32, device=device)
-    hbd = torch.zeros(num_atoms, dtype=torch.float32, device=device)
-    hba = torch.zeros(num_atoms, dtype=torch.float32, device=device)
-
-    for i, atom in enumerate(mol.GetAtoms()):
-        radii[i] = ptable.GetRvdw(atom.GetAtomicNum())
-
+    Uses AutoDock4 atom typing rules rather than RDKit's generic feature
+    factory; sanitizes lightly first so implicit-H counts are available.
+    """
+    n = mol.GetNumAtoms()
     try:
         mol.UpdatePropertyCache(strict=False)
-        Chem.GetSymmSSSR(mol)
     except Exception:
         pass
 
-    feats = _FACTORY.GetFeaturesForMol(mol)
-    for feat in feats:
-        f_type = feat.GetFamily()
-        atom_ids = feat.GetAtomIds()
+    radii = torch.zeros(n, dtype=torch.float32, device=device)
+    hydro = torch.zeros(n, dtype=torch.float32, device=device)
+    hbd = torch.zeros(n, dtype=torch.float32, device=device)
+    hba = torch.zeros(n, dtype=torch.float32, device=device)
 
-        if f_type == "Hydrophobe":
-            for idx in atom_ids:
-                hydro[idx] = 1.0
-        elif f_type == "Donor":
-            for idx in atom_ids:
-                hbd[idx] = 1.0
-        elif f_type == "Acceptor":
-            for idx in atom_ids:
-                hba[idx] = 1.0
+    for i, atom in enumerate(mol.GetAtoms()):
+        radii[i] = AD4_VDW_RADII.get(atom.GetAtomicNum(), _FALLBACK_VDW)
+        h, d, a = _classify_atom_ad4(atom)
+        hydro[i] = h
+        hbd[i] = d
+        hba[i] = a
 
     return {"vdw": radii, "hydro": hydro, "hbd": hbd, "hba": hba}
+
+
+def _prefilter_pdb_to_pocket(pdb_path: str, center: torch.Tensor, cutoff: float) -> str:
+    """Return a temp PDB containing only ATOM/HETATM rows within cutoff of center.
+
+    Pre-filtering is done via string parsing of the 30:54 coordinate columns so
+    that exotic records in full-protein PDBs (altloc variants, nonstandard atom
+    names like "A") don't trip RDKit before we get a chance to strip them.
+    """
+    import tempfile
+    cx, cy, cz = [float(v) for v in center.detach().cpu().tolist()]
+    r2 = cutoff * cutoff
+    keep: list[str] = []
+    with open(pdb_path) as fh:
+        for line in fh:
+            rec = line[:6]
+            if rec in ("ATOM  ", "HETATM"):
+                try:
+                    x = float(line[30:38]); y = float(line[38:46]); z = float(line[46:54])
+                except ValueError:
+                    continue
+                dx, dy, dz = x - cx, y - cy, z - cz
+                if dx * dx + dy * dy + dz * dz > r2:
+                    continue
+                # Keep only altloc ' ' or 'A' to avoid duplicate parse states.
+                if line[16] not in (" ", "A"):
+                    continue
+                keep.append(line)
+            elif rec in ("TER   ", "END   ", "ENDMDL"):
+                keep.append(line)
+    keep.append("END\n")
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".pdb", delete=False)
+    tmp.writelines(keep)
+    tmp.close()
+    return tmp.name
 
 
 def compute_pocket_features_from_pdb(
@@ -90,7 +166,15 @@ def compute_pocket_features_from_pdb(
 
     Returns (features_dict, coords [N, 3]).
     """
-    mol = Chem.MolFromPDBFile(pdb_path, removeHs=True, sanitize=False)
+    parse_path = pdb_path
+    tmp_path: str | None = None
+    if center is not None and cutoff is not None:
+        tmp_path = _prefilter_pdb_to_pocket(pdb_path, center, cutoff)
+        parse_path = tmp_path
+    mol = Chem.MolFromPDBFile(parse_path, removeHs=True, sanitize=False)
+    if tmp_path is not None:
+        import os as _os
+        _os.unlink(tmp_path)
     assert mol is not None, f"Failed to parse pocket PDB: {pdb_path}"
     mol.UpdatePropertyCache(strict=False)
     Chem.FastFindRings(mol)

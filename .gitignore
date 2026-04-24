@@ -25,6 +25,8 @@ checkpoints/
 # Data
 data/raw/
 data/processed/
+data/conf_train/
+data/conf_val/
 *.sdf
 *.pdb
 *.mol2
