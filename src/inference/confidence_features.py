@@ -204,4 +204,77 @@ def extract_per_atom_features(
     }
 
 
-__all__ = ["extract_per_atom_features", "recover_frag_state"]
+def score_poses_with_confidence(
+    main_model,
+    confidence_ckpt_path: str,
+    graph: dict,
+    lig_data: dict,
+    meta: dict,
+    raw_poses: list[torch.Tensor],
+    device: torch.device,
+) -> tuple[list[float], list[int]]:
+    """Score N poses with the confidence head and return (pred_rmsds, sorted_indices).
+
+    ``sorted_indices`` is in ascending pred_rmsd order (best first).  Loads the
+    confidence checkpoint, extracts per-atom features, and runs one batched
+    forward of the head.  Caller is responsible for applying ``sorted_indices``
+    to the pose list.
+    """
+    import numpy as np
+    from src.models.confidence import ConfidenceHead
+
+    n_atoms = int(meta["num_atom"])
+    feats = extract_per_atom_features(
+        main_model, graph, lig_data, meta, raw_poses,
+        crystal_pocket_centered=torch.zeros(n_atoms, 3),
+        device=device, t_eval=1.0,
+    )
+
+    ckpt = torch.load(confidence_ckpt_path, map_location=device, weights_only=False)
+    head = ConfidenceHead(
+        scalar_dim=ckpt["scalar_dim"], norms_dim=ckpt["norms_dim"],
+        pose_stats_dim=ckpt["pose_stats_dim"],
+        hidden=ckpt["hidden"], trunk_depth=ckpt["trunk_depth"],
+        head_depth=ckpt["head_depth"], dropout=ckpt["dropout"],
+        pool_mode=ckpt.get("pool_mode", "mean_max"),
+        n_pool_queries=ckpt.get("n_pool_queries", 4),
+    ).to(device)
+    head.load_state_dict(ckpt["state_dict"])
+    head.train(False)
+
+    pose_stats_keys = ckpt.get("pose_stats_keys", [
+        "pose_v_mean", "pose_v_max", "pose_v_p95",
+        "pose_w_mean", "pose_w_max", "pose_w_p95",
+    ])
+    pose_stats_arr = np.stack([feats[k] for k in pose_stats_keys], axis=1)
+
+    scalar_mu = torch.from_numpy(ckpt["scalar_mu"]).to(device)
+    scalar_sd = torch.from_numpy(ckpt["scalar_sd"]).to(device)
+    norms_mu = torch.from_numpy(ckpt["norms_mu"]).to(device)
+    norms_sd = torch.from_numpy(ckpt["norms_sd"]).to(device)
+    ps_mu = torch.from_numpy(ckpt["pose_stats_mu"]).to(device)
+    ps_sd = torch.from_numpy(ckpt["pose_stats_sd"]).to(device)
+
+    atom_scalar = (torch.from_numpy(feats["atom_scalar"]).to(device) - scalar_mu) / scalar_sd
+    atom_norms = (torch.from_numpy(feats["atom_norms"]).to(device) - norms_mu) / norms_sd
+    pose_stats = (torch.from_numpy(pose_stats_arr.astype("float32")).to(device) - ps_mu) / ps_sd
+
+    B = len(raw_poses)
+    n_frags = int(meta["num_frag"])
+    atom_pose_ptr = torch.arange(B + 1, device=device, dtype=torch.long) * n_atoms
+    local_fid = lig_data["fragment_id"].to(device).long()
+    atom_frag_id = torch.cat([local_fid + b * n_frags for b in range(B)])
+
+    with torch.no_grad():
+        out = head(atom_scalar, atom_norms, atom_pose_ptr, atom_frag_id, pose_stats=pose_stats)
+
+    pred_rmsd = out["pose_rmsd"].cpu().numpy()
+    sorted_idx = np.argsort(pred_rmsd).tolist()
+    return pred_rmsd.tolist(), sorted_idx
+
+
+__all__ = [
+    "extract_per_atom_features",
+    "recover_frag_state",
+    "score_poses_with_confidence",
+]

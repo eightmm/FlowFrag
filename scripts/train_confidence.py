@@ -184,8 +184,9 @@ def main() -> None:
     ).to(device)
     atom_disp_t = torch.from_numpy(atom_disp_all.astype(np.float32)).to(device)
     pose_rmsd_t = torch.from_numpy(pose_rmsd_all.astype(np.float32)).to(device)
-    ps_mu = pose_stats_all.mean(axis=0)
-    ps_sd = pose_stats_all.std(axis=0) + 1e-6
+    # Pose-stats normalization computed on TRAIN poses only (no val leakage).
+    ps_mu = pose_stats_all[tr_atom_idx_pose].mean(axis=0)
+    ps_sd = pose_stats_all[tr_atom_idx_pose].std(axis=0) + 1e-6
     pose_stats_arr = (pose_stats_all - ps_mu) / ps_sd
     pose_stats_t = torch.from_numpy(pose_stats_arr).to(device)
     print(f"Loaded to GPU: scalar={atom_scalar_t.shape}, norms={atom_norms_t.shape}")

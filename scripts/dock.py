@@ -78,6 +78,11 @@ def main() -> None:
     parser.add_argument("--phys_max_force", type=float, default=10.0)
     parser.add_argument("--phys_weight_preset", type=str, default="vina",
                         choices=("vina", "vinardo"))
+    parser.add_argument("--confidence_ckpt", type=str, default=None,
+                        help="Path to a trained confidence head (e.g. "
+                             "outputs/conf_models/confidence_v1.pt). When set "
+                             "and num_samples > 1, poses are reordered by "
+                             "predicted pose RMSD (best first).")
     args = parser.parse_args()
 
     protein_pdb = Path(args.protein)
@@ -167,6 +172,22 @@ def main() -> None:
     all_trajs = results if args.save_traj else []
     pc = meta["pocket_center"]
 
+    # Confidence-based reranking ------------------------------------------
+    confidence_pred = None
+    if args.confidence_ckpt and args.num_samples > 1:
+        from src.inference.confidence_features import score_poses_with_confidence
+        print(f"Scoring {args.num_samples} poses with confidence head: "
+              f"{args.confidence_ckpt}")
+        confidence_pred, sorted_idx = score_poses_with_confidence(
+            model, args.confidence_ckpt, graph, lig_data, meta,
+            all_poses, device,
+        )
+        all_poses = [all_poses[i] for i in sorted_idx]
+        all_trajs = [all_trajs[i] for i in sorted_idx] if all_trajs else all_trajs
+        confidence_pred = [confidence_pred[i] for i in sorted_idx]
+        print(f"  Top-3 predicted RMSD: "
+              f"{confidence_pred[0]:.2f}, {confidence_pred[1]:.2f}, {confidence_pred[2]:.2f}")
+
     if args.num_samples == 1:
         out_path = out_dir / "docked.sdf"
         write_sdf(mol, all_poses[0], pc, out_path)
@@ -192,6 +213,7 @@ def main() -> None:
         "trajectories": [
             {"traj": r["traj"], "traj_times": r["traj_times"]} for r in all_trajs
         ] if args.save_traj else None,
+        "confidence_pred_rmsd": confidence_pred,  # None if --confidence_ckpt not set
     }, out_dir / "results.pt")
     print(f"Raw tensors saved to {out_dir / 'results.pt'}")
 
