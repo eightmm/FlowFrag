@@ -78,11 +78,12 @@ def main() -> None:
     parser.add_argument("--phys_max_force", type=float, default=10.0)
     parser.add_argument("--phys_weight_preset", type=str, default="vina",
                         choices=("vina", "vinardo"))
-    parser.add_argument("--confidence_ckpt", type=str, default=None,
-                        help="Path to a trained confidence head (e.g. "
-                             "outputs/conf_models/confidence_v1.pt). When set "
-                             "and num_samples > 1, poses are reordered by "
-                             "predicted pose RMSD (best first).")
+    parser.add_argument("--confidence_ckpt", type=str,
+                        default="weights/confidence_v1.pt",
+                        help="Path to a trained confidence head. When the file "
+                             "exists and num_samples > 1, poses are reordered "
+                             "by predicted pose RMSD (best first). Pass an "
+                             "empty string to disable.")
     args = parser.parse_args()
 
     protein_pdb = Path(args.protein)
@@ -174,7 +175,12 @@ def main() -> None:
 
     # Confidence-based reranking ------------------------------------------
     confidence_pred = None
-    if args.confidence_ckpt and args.num_samples > 1:
+    use_confidence = (
+        args.confidence_ckpt
+        and args.num_samples > 1
+        and Path(args.confidence_ckpt).exists()
+    )
+    if use_confidence:
         from src.inference.confidence_features import score_poses_with_confidence
         print(f"Scoring {args.num_samples} poses with confidence head: "
               f"{args.confidence_ckpt}")

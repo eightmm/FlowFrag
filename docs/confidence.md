@@ -109,8 +109,10 @@ head.load_state_dict(ckpt['state_dict']); head.train(False)
 # 4. argmin(pred_pose_rmsd) over 40 poses → best
 ```
 
-For end-to-end docking with confidence selection, use `scripts/dock.py
---confidence_ckpt weights/confidence_v1.pt`.
+For end-to-end docking with confidence selection, just use `scripts/dock.py`
+with `--num_samples > 1` — `--confidence_ckpt` defaults to
+`weights/confidence_v1.pt`.  Pass `--confidence_ckpt ""` to disable and fall
+back to first-pose-out-of-N.
 
 ## Selection ceiling and bottleneck
 
