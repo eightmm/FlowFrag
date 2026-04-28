@@ -1,0 +1,65 @@
+model:
+  model_type: unified
+  hidden_dim: 512
+  hidden_vec_dim: 64
+  l2_dim: 32
+  l2o_dim: 32
+  num_layers: 6
+  n_rbf: 32
+  t_emb_dim: 128
+  sh_lmax: 2
+  dropout: 0.1
+  contact_cutoff: 5.0
+
+data:
+  data_dir: data/plinder_processed
+  split_file: data/splits/plinder_v4.json
+  pocket_cutoff: 8.0
+  pocket_jitter_sigma: 2.0
+  pocket_cutoff_noise: 2.0
+  min_atoms: 5
+  max_atoms: 120                 # was 80; expanded for cofactors / large ligands
+  max_frags: 30                  # was 20; expanded for cofactors
+  min_protein_res: 50
+  prior_sigma: 3.0
+  rotation_augmentation: ligand_uniform
+  deterministic: false
+  num_workers: 8
+  # Receptor augmentation: 30% chance to swap holo with apo / AF2-pred
+  # receptor (28k of 130k systems have HQ alt structures).
+  receptor_aug_prob: 0.3
+  alt_receptor_root: data/plinder_processed/_alt_proteins
+  alt_receptor_mapping: data/plinder_processed/alt_receptor_mapping.json
+
+training:
+  max_steps: 100000              # 8x training data → 4x steps for convergence parity
+  batch_size: 64                 # per-GPU → effective 512 on 8 B200
+  gradient_accumulation_steps: 1
+  use_muon: true
+  muon_lr: 0.02
+  lr: 3.0e-4
+  weight_decay: 0.01
+  omega_weight: 8.0
+  atom_aux_weight: 0.3
+  dg_weight: 3.0
+  max_grad_norm: 1.0
+  scheduler_type: trapezoidal
+  warmup_ratio: 0.02             # 2k step warmup
+  cooldown_ratio: 0.3            # 30k step cooldown
+  seed: 42
+  use_ema: true
+  ema_decay: 0.999
+  use_time_weighting: false
+
+logging:
+  use_wandb: true
+  wandb_project: flowfrag
+  wandb_run_name: v4-plinder-b200x8
+  log_every: 25
+  val_every: 500
+  rollout_every: 5000
+  rollout_steps: 25
+  rollout_time_schedule: late
+  rollout_schedule_power: 3.0
+  rollout_max_samples: 0          # full PLINDER-val (598)
+  output_dir: outputs/v4_plinder

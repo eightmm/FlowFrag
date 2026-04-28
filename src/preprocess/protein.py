@@ -59,6 +59,76 @@ METAL_ELEMENTS: set[str] = {
 BACKBONE_ATOMS: set[str] = {"N", "CA", "C", "O"}
 
 # ---------------------------------------------------------------------------
+# Per-atom pharmacophore lookup (mirror of ligand-side features)
+# Backbone is handled via universal rules at runtime:
+#   - backbone N → donor (PRO excluded — cyclic, no NH)
+#   - backbone O → acceptor (universal)
+# Side-chain atoms below carry their own flags.
+# ---------------------------------------------------------------------------
+SC_DONOR_ATOMS: set[tuple[str, str]] = {
+    ("ARG", "NE"), ("ARG", "NH1"), ("ARG", "NH2"),
+    ("ASN", "ND2"), ("GLN", "NE2"),
+    ("HIS", "ND1"), ("HIS", "NE2"),  # both possible tautomers
+    ("LYS", "NZ"),
+    ("SER", "OG"), ("THR", "OG1"), ("TYR", "OH"),
+    ("TRP", "NE1"),
+    ("CYS", "SG"),  # weak
+}
+
+SC_ACCEPTOR_ATOMS: set[tuple[str, str]] = {
+    ("ASN", "OD1"), ("ASP", "OD1"), ("ASP", "OD2"),
+    ("GLN", "OE1"), ("GLU", "OE1"), ("GLU", "OE2"),
+    ("HIS", "ND1"), ("HIS", "NE2"),
+    ("SER", "OG"), ("THR", "OG1"), ("TYR", "OH"),
+    ("MET", "SD"), ("CYS", "SG"),  # weak
+}
+
+SC_POSITIVE_ATOMS: set[tuple[str, str]] = {
+    ("ARG", "NE"), ("ARG", "NH1"), ("ARG", "NH2"), ("ARG", "CZ"),
+    ("LYS", "NZ"),
+    ("HIS", "ND1"), ("HIS", "NE2"),  # only ~10% protonated at pH 7.4 but kept for completeness
+}
+
+SC_NEGATIVE_ATOMS: set[tuple[str, str]] = {
+    ("ASP", "OD1"), ("ASP", "OD2"),
+    ("GLU", "OE1"), ("GLU", "OE2"),
+}
+
+SC_HYDROPHOBIC_ATOMS: set[tuple[str, str]] = {
+    ("ALA", "CB"),
+    ("VAL", "CG1"), ("VAL", "CG2"),
+    ("LEU", "CG"), ("LEU", "CD1"), ("LEU", "CD2"),
+    ("ILE", "CB"), ("ILE", "CG1"), ("ILE", "CG2"), ("ILE", "CD1"),
+    ("MET", "CG"), ("MET", "SD"), ("MET", "CE"),
+    ("PRO", "CB"), ("PRO", "CG"), ("PRO", "CD"),
+    ("PHE", "CG"), ("PHE", "CD1"), ("PHE", "CD2"), ("PHE", "CE1"), ("PHE", "CE2"), ("PHE", "CZ"),
+    ("TRP", "CG"), ("TRP", "CD2"), ("TRP", "CE2"), ("TRP", "CE3"),
+    ("TRP", "CZ2"), ("TRP", "CZ3"), ("TRP", "CH2"),
+    ("TYR", "CG"), ("TYR", "CD1"), ("TYR", "CD2"), ("TYR", "CE1"), ("TYR", "CE2"),
+    ("CYS", "CB"),
+}
+
+
+def _patom_pharmacophore(res_name: str, atom_name: str) -> tuple[bool, bool, bool, bool, bool]:
+    """Return (donor, acceptor, positive, negative, hydrophobic) for one heavy atom.
+
+    Backbone N → donor (except PRO).  Backbone O → acceptor (universal).
+    Side-chain atoms use ``SC_*`` lookup tables. Metal atoms are positive.
+    """
+    is_donor = is_acceptor = is_positive = is_negative = is_hydrophobic = False
+    if atom_name == "N" and res_name != "PRO":
+        is_donor = True
+    if atom_name == "O" or atom_name == "OXT":
+        is_acceptor = True
+    key = (res_name, atom_name)
+    if key in SC_DONOR_ATOMS: is_donor = True
+    if key in SC_ACCEPTOR_ATOMS: is_acceptor = True
+    if key in SC_POSITIVE_ATOMS: is_positive = True
+    if key in SC_NEGATIVE_ATOMS: is_negative = True
+    if key in SC_HYDROPHOBIC_ATOMS: is_hydrophobic = True
+    return is_donor, is_acceptor, is_positive, is_negative, is_hydrophobic
+
+# ---------------------------------------------------------------------------
 # Canonical heavy-atom topology for the 20 standard amino acids
 # ---------------------------------------------------------------------------
 
@@ -442,17 +512,32 @@ def parse_pocket_atoms(
     tokens: list[int] = []
     is_backbone: list[bool] = []
     is_metal: list[bool] = []
+    is_donor: list[bool] = []
+    is_acceptor: list[bool] = []
+    is_positive: list[bool] = []
+    is_negative: list[bool] = []
+    is_hydrophobic: list[bool] = []
     for a in atoms:
         if a.is_metal:
             tokens.append(METAL_ATOM_TOKENS.get(a.element, METAL_OTHER_TOKEN))
+            # Treat metal ions as positive cations (Zn2+, Mg2+, etc.)
+            d, ac, p, n, h = False, False, True, False, False
         else:
             tokens.append(_get_res_atom_token(a.res_name, a.atom_name))
+            d, ac, p, n, h = _patom_pharmacophore(a.res_name, a.atom_name)
         is_backbone.append(a.atom_name in BACKBONE_ATOMS)
         is_metal.append(a.is_metal)
+        is_donor.append(d); is_acceptor.append(ac)
+        is_positive.append(p); is_negative.append(n); is_hydrophobic.append(h)
 
     patom_token = torch.tensor(tokens, dtype=torch.int64)
     patom_is_backbone = torch.tensor(is_backbone, dtype=torch.bool)
     patom_is_metal = torch.tensor(is_metal, dtype=torch.bool)
+    patom_is_donor = torch.tensor(is_donor, dtype=torch.bool)
+    patom_is_acceptor = torch.tensor(is_acceptor, dtype=torch.bool)
+    patom_is_positive = torch.tensor(is_positive, dtype=torch.bool)
+    patom_is_negative = torch.tensor(is_negative, dtype=torch.bool)
+    patom_is_hydrophobic = torch.tensor(is_hydrophobic, dtype=torch.bool)
     patom_coords = torch.tensor([a.coords for a in atoms], dtype=torch.float32)
 
     # Per-residue virtual nodes (one per residue).
@@ -549,6 +634,15 @@ def parse_pocket_atoms(
         "patom_residue_id": patom_residue_id,
         "patom_is_backbone": patom_is_backbone,
         "patom_is_metal": patom_is_metal,
+        # Per-atom pharmacophore (NEW in schema_version=2): mirrors ligand-side
+        # donor/acceptor/positive/negative/hydrophobe features so the model can
+        # learn polar/charged contacts directly instead of inferring them from
+        # the (residue, atom) token alone.
+        "patom_is_donor": patom_is_donor,
+        "patom_is_acceptor": patom_is_acceptor,
+        "patom_is_positive": patom_is_positive,
+        "patom_is_negative": patom_is_negative,
+        "patom_is_hydrophobic": patom_is_hydrophobic,
         "pbond_index": pbond_index,
         "pres_coords": pres_coords,
         "pres_residue_type": pres_residue_type,

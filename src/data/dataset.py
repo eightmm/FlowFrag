@@ -133,6 +133,9 @@ class UnifiedDataset(Dataset):
         rotation_augmentation: str = "none",
         deterministic: bool = False,
         seed: int = 42,
+        receptor_aug_prob: float = 0.0,
+        alt_receptor_root: str | Path | None = None,
+        alt_receptor_mapping: str | Path | None = None,
     ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -143,6 +146,14 @@ class UnifiedDataset(Dataset):
         self.rotation_augmentation = rotation_augmentation
         self.deterministic = deterministic
         self.seed = seed
+        self.receptor_aug_prob = receptor_aug_prob
+        self.alt_receptor_root: Path | None = (
+            Path(alt_receptor_root) if alt_receptor_root else None
+        )
+        self.alt_receptor_mapping: dict[str, list[dict]] = {}
+        if alt_receptor_mapping is not None and receptor_aug_prob > 0:
+            with open(alt_receptor_mapping) as f:
+                self.alt_receptor_mapping = json.load(f).get("mapping", {})
 
         # Collect PDB IDs
         if split_file is not None:
@@ -188,9 +199,33 @@ class UnifiedDataset(Dataset):
         pdb_id = self.pdb_ids[idx]
         data_dir = self.root / pdb_id
 
-        prot_data = torch.load(data_dir / "protein.pt", weights_only=True)
         ligand = torch.load(data_dir / "ligand.pt", weights_only=True)
         meta = torch.load(data_dir / "meta.pt", weights_only=True)
+
+        # --- Receptor augmentation: optionally swap holo with apo / predicted ---
+        # Same chain space (PLINDER guarantees pocket_lddt ≥ 80 alignment), so
+        # holo's pocket_center can crop the alt protein at runtime.
+        prot_data = None
+        sys_id = meta.get("plinder_system_id", pdb_id)
+        if (self.receptor_aug_prob > 0 and self.alt_receptor_root is not None
+                and sys_id in self.alt_receptor_mapping):
+            aug_gen = self._make_generator(idx, stream_offset=4)
+            roll = (
+                torch.rand(1, generator=aug_gen).item()
+                if aug_gen is not None else torch.rand(1).item()
+            )
+            if roll < self.receptor_aug_prob:
+                alts = self.alt_receptor_mapping[sys_id]
+                pick_idx = (
+                    int(torch.randint(0, len(alts), (1,), generator=aug_gen).item())
+                    if aug_gen is not None else int(torch.randint(0, len(alts), (1,)).item())
+                )
+                alt_path = self.alt_receptor_root / f"{alts[pick_idx]['id']}.pt"
+                if alt_path.exists():
+                    prot_data = torch.load(alt_path, weights_only=True)
+
+        if prot_data is None:
+            prot_data = torch.load(data_dir / "protein.pt", weights_only=True)
 
         pocket_center = meta["pocket_center"]
         n_frags = meta["num_frag"].item()
