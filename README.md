@@ -17,62 +17,83 @@ prior pose to the docked pose.
   atom-level displacement.
 - **SE(3)-equivariant GNN** — tensor product message passing over a
   heterogeneous protein-ligand graph with irreps up to l=2, accelerated by
-  [cuEquivariance](https://docs.nvidia.com/cuda/cuequivariance/) CUDA kernels
-  (fused_tp).
+  [cuEquivariance](https://docs.nvidia.com/cuda/cuequivariance/) CUDA kernels.
 - **Flow matching on SE(3)** — linear interpolation for translation, SLERP for
   rotation, logit-normal time sampling. Single-step training objective
   (v, ω regression); ODE-based multi-step inference.
-- **CASF-2016 core**: **1.07 Å** median RMSD and **89.4 %** < 2 Å success
-  (oracle top-1 of 10 priors, N=284), from a 25 K-step training run on
-  8× NVIDIA B200.
-- **Astex Diverse & PoseBusters v2 (SMILES-only input)**: 0.77 Å / 1.04 Å
-  median RMSD and 92 % / 80 % < 2 Å success (MMFF-refined oracle of 40 at
-  10 ODE steps) — see [docs/benchmark.md](docs/benchmark.md).
-- **Trajectory visualization**: `scripts/viz_traj.py` renders the ODE flow
-  as an animated GIF with protein contact heatmap, fragment-colored
-  ball-and-stick, 2D molecular sketch, per-frame RMSD curve, and a
-  position-restrained MMFF refinement frame appended at the end.
+- **Confidence head for pose selection** — attention-pool ranker
+  (`weights/confidence_v1.pt`) trained on per-pose features (pose RMSD
+  regression). Closes ~9 pp of the gap between Vina and the sampler oracle
+  ceiling on PoseBusters v2.
+- **End-to-end SMILES-only inference** — `scripts/dock.py` re-embeds 3D
+  conformer with ETKDGv3+MMFF, samples N=40 ODE trajectories at σ=3 Å
+  prior, ranks via confidence head, optional MMFF/Vina refinement and
+  trajectory GIF rendering.
 
 ## Results
 
-Pocket-conditioned re-docking on CASF-2016 core (N = 284). `best.pt` from the
-v3 training run (`configs/train_v3_b200.yaml`, 25 K steps, effective batch 512).
+All numbers below are from a single deployed checkpoint (`weights/best.pt`)
+with 40 ODE samples per complex, 25 ODE steps, prior σ = 3.0 Å, pocket
+cutoff 8 Å. Three pose-selection strategies are shown: **Oracle** = best of
+40 by ground-truth RMSD (sampler ceiling), **Confidence** = ranked by
+trained confidence head (`weights/confidence_v1.pt`), **Vina** = scored by
+Autodock-Vina free energy.
 
-| Selection | Median RMSD | Mean RMSD | < 2 Å | < 5 Å |
-|---|---|---|---|---|
-| Single prior, 25 ODE steps | 2.15 Å | — | 44.4 % | 90.5 % |
-| Oracle top-1 of 10 priors | **1.07 Å** | 1.24 Å | **89.4 %** | **98.9 %** |
-| Worst-of-10 (upper bound) | 3.45 Å | — | — | — |
+### Headline: PoseBusters v2 + Astex Diverse + CASF-2016 (re-docking)
 
-> **Oracle** = best of N by ground-truth RMSD (reachable upper bound on the
-> model's sampling distribution; a downstream scoring function would pick
-> among the N candidates at deployment).
+| Benchmark | n | Selection | < 1 Å | **< 2 Å** | < 5 Å | Median RMSD |
+|---|---:|---|---:|---:|---:|---:|
+| **PoseBusters v2** | 308 | Oracle (sampler ceiling) | 55.8 % | 84.4 % | 97.1 % | 0.88 Å |
+| **PoseBusters v2** | 308 | **Confidence (deployed)** | 39.6 % | **70.8 %** | 91.9 % | 1.23 Å |
+| **PoseBusters v2** | 308 | Vina | 36.7 % | 61.7 % | 88.3 % | 1.42 Å |
+| **Astex Diverse** | 85 | Oracle | 76.5 % | 97.6 % | 100.0 % | 0.61 Å |
+| **Astex Diverse** | 85 | **Confidence (deployed)** | 62.4 % | **87.1 %** | 94.1 % | 0.85 Å |
+| **Astex Diverse** | 85 | Vina | 51.8 % | 78.8 % | 97.6 % | 0.99 Å |
+| **CASF-2016 core** | 284 | Oracle (10-prior top-1) | — | 89.4 % | 98.9 % | 1.07 Å |
+| **CASF-2016 core** | 284 | Single prior, 25 step | — | 44.4 % | 90.5 % | 2.15 Å |
 
-### External benchmarks (SMILES-only input)
+The **Confidence** row is the production setting (`scripts/dock.py
+--confidence_ckpt weights/confidence_v1.pt`).
 
-The model was evaluated on Astex Diverse and PoseBusters v2 with **SMILES
-as the only chemical input** — 3D starting conformers are re-embedded from
-scratch per complex via RDKit ETKDGv3 + MMFF. SMILES come from the RCSB
-chemcomp REST API (cached in `data/{astex,pb}_smiles.json`); RMSD is
-symmetry-aware via RDKit `CalcRMS` and falls back to MCS-matched subset
-for complexes where the SMILES-derived topology differs from the crystal
-(N = 40 samples, 10 ODE steps, position-restrained MMFF refinement).
+### Selector gap analysis
 
-| Dataset | Selection | Median | Mean | < 1 Å | < 2 Å | < 5 Å |
-|---|---|---|---|---|---|---|
-| Astex (84) | MMFF+Oracle | **0.77** | 0.97 | 70.2 % | **91.7 %** | 98.8 % |
-| Astex (84) | MMFF+Vina | 1.27 | 1.96 | 35.7 % | 71.4 % | 90.5 % |
-| PoseBusters v2 (308) | MMFF+Oracle | **1.04** | 1.38 | 46.8 % | **79.5 %** | 98.7 % |
-| PoseBusters v2 (308) | MMFF+Vina | 1.83 | 2.76 | 18.5 % | 54.9 % | 84.7 % |
+The remaining gap (oracle − confidence) shows where confidence-based
+ranking can still improve. Vina is included as a no-learning baseline.
 
-Full tables (including `none` refinement and Cluster selection) and a
-gallery of trajectory GIFs across easy → hard cases are in
-[docs/benchmark.md](docs/benchmark.md).
+| Benchmark | Oracle ↔ Confidence | Confidence ↔ Vina |
+|---|---:|---:|
+| Astex (n=85) | 10.5 pp | +8.3 pp |
+| PoseBusters v2 (n=308) | **13.6 pp** | +9.1 pp |
 
-### Integration-step sweep
+Confidence beats Vina by 8–9 pp on both, but ~14 pp of headroom remains
+on PoseBusters before reaching the oracle ceiling.
 
-Same checkpoint, single prior per sample, showing that the learned
-velocity field is ODE-smooth — 5 steps are enough:
+### Failure mode (PoseBusters v2)
+
+Failure rate scales linearly with ligand size and fragment count.
+Phosphate-containing cofactors (NTP/FAD/CoA-like) account for **56 % of
+HARD failures** (oracle ≥ 5 Å) despite being 25 % of overall samples.
+
+| Bucket | n | Sampler fail (oracle ≥ 2 Å) | Selector fail (Confidence ≥ 2 Å) |
+|---|---:|---:|---:|
+| n_atom 1–25 | 168 | 4 % | 23 % |
+| n_atom 26–35 | 99 | 21 % | 31 % |
+| n_atom 36–50 | 34 | **44 %** | **65 %** |
+| n_atom 51+ | 7 | **71 %** | 71 % |
+| n_frag 1–3 | 105 | 5 % | 22 % |
+| n_frag 4–8 | 180 | 16 % | 30 % |
+| n_frag 9+ | 23 | **61 %** | **83 %** |
+
+→ Two fixes for the next training round (planned for PLINDER 130k retrain):
+relax `max_atoms` 80 → 120 and `max_frags` 20 → 30 to expose
+cofactor-class ligands during training, plus apo/predicted receptor
+augmentation (already built — 13 k alt receptors preprocessed at
+`data/plinder_processed/_alt_proteins/`).
+
+### Integration-step sweep (CASF, single prior)
+
+The learned velocity field is ODE-smooth — 5 steps already capture most
+of the accuracy:
 
 | ODE steps | Median RMSD | < 2 Å | < 5 Å |
 |---|---|---|---|
@@ -80,6 +101,14 @@ velocity field is ODE-smooth — 5 steps are enough:
 | 10 | 2.17 Å | 43.7 % | 90.9 % |
 | 20 | 2.16 Å | 44.4 % | 90.9 % |
 | 25 | 2.15 Å | 44.4 % | 90.5 % |
+
+### Trajectory gallery
+
+GIFs of 3 successful (oracle ≤ 0.25 Å) and 3 failure (oracle ≥ 7.5 Å)
+PoseBusters cases are rendered by `scripts/viz_traj.py`. See
+[outputs/viz_traj_pb_gif/](outputs/viz_traj_pb_gif/) and
+[outputs/viz_pb/pb_failure_analysis.png](outputs/viz_pb/pb_failure_analysis.png)
+for the failure-rate heat map.
 
 ## Method
 
