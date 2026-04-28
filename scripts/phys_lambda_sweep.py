@@ -59,7 +59,7 @@ def main() -> None:
     ap.add_argument("--base_seed", type=int, default=1000)
     ap.add_argument("--checkpoint", default="weights/best.pt")
     ap.add_argument("--config", default="configs/train_v3_b200.yaml")
-    ap.add_argument("--smiles_map", default="data/astex_smiles.json")
+    ap.add_argument("--smiles_map", default="data/external_test/astex_smiles.json")
     ap.add_argument("--device", default=None)
     args = ap.parse_args()
 

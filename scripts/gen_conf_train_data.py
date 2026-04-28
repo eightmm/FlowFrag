@@ -45,7 +45,7 @@ def main() -> None:
     ap.add_argument("--split_json", default="data/splits/pdbbind2020.json")
     ap.add_argument("--split_key", default="train",
                     help="Which split to iterate: 'train' or 'val'")
-    ap.add_argument("--astex_smiles", default="data/astex_smiles.json")
+    ap.add_argument("--astex_smiles", default="data/external_test/astex_smiles.json")
     ap.add_argument("--config", required=True)
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--out_dir", default="data/conf_train",

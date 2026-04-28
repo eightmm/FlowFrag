@@ -74,19 +74,19 @@ BENCHMARKS = [
     ("astex_stoch",
      Path("/mnt/data/PLI/Astex-diverse-set"),
      Path("outputs/eval_astex_phys_25s/poses_phys"),
-     Path("data/astex_smiles.json")),
+     Path("data/external_test/astex_smiles.json")),
     ("astex_det",
      Path("/mnt/data/PLI/Astex-diverse-set"),
      Path("outputs/eval_astex_phys_25/poses_phys"),
-     Path("data/astex_smiles.json")),
+     Path("data/external_test/astex_smiles.json")),
     ("pb_stoch",
      Path("/mnt/data/PLI/PoseBusters/posebusters_benchmark_set"),
      Path("outputs/eval_posebusters_phys_25s/poses_phys"),
-     Path("data/pb_smiles.json")),
+     Path("data/external_test/pb_smiles.json")),
     ("pb_det",
      Path("/mnt/data/PLI/PoseBusters/posebusters_benchmark_set"),
      Path("outputs/eval_posebusters_phys_25/poses_phys"),
-     Path("data/pb_smiles.json")),
+     Path("data/external_test/pb_smiles.json")),
 ]
 
 

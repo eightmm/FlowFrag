@@ -13,11 +13,11 @@ Two dispatch modes:
 Usage:
     python scripts/fetch_smiles.py --dataset astex \
         --data_dir /mnt/data/PLI/Astex-diverse-set \
-        --out data/astex_smiles.json
+        --out data/external_test/astex_smiles.json
 
     python scripts/fetch_smiles.py --dataset pb \
         --data_dir /mnt/data/PLI/PoseBusters/posebusters_benchmark_set \
-        --out data/pb_smiles.json
+        --out data/external_test/pb_smiles.json
 """
 from __future__ import annotations
 

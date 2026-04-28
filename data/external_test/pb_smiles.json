@@ -1,0 +1,1714 @@
+{
+  "5S8I_2LY": {
+    "comp_id": "2LY",
+    "smiles": "CNC(=O)c1c2c(cs1)OCCO2"
+  },
+  "5SAK_ZRY": {
+    "comp_id": "ZRY",
+    "smiles": "c1ccc(cc1)N/N=C\\2/c3ccccc3C(=N2)N"
+  },
+  "5SB2_1K2": {
+    "comp_id": "1K2",
+    "smiles": "c1ccc(cc1)[C@@H]2C[C@H]2NC(=O)c3cc(cc(c3)Cl)COc4cc5cc[nH]c5nc4"
+  },
+  "5SD5_HWI": {
+    "comp_id": "HWI",
+    "smiles": "CCc1c(c(nc(n1)N)N)OCCCOc2cc(ccc2N3CC(C3)C(=O)O)C"
+  },
+  "5SIS_JSM": {
+    "comp_id": "JSM",
+    "smiles": "CNCCN(C)C(=O)c1cnn(c1C(=O)Nc2ccn3cc(nc3c2)c4ccccc4)C"
+  },
+  "6M2B_EZO": {
+    "comp_id": "EZO",
+    "smiles": "CN(c1nc(cs1)c2ccccc2Cl)/N=C/c3ccccc3C(=O)O"
+  },
+  "6M73_FNR": {
+    "comp_id": "FNR",
+    "smiles": "Cc1cc2c(cc1C)N(C3=C(N2)C(=O)NC(=O)N3)C[C@@H]([C@@H]([C@@H](COP(=O)(O)O)O)O)O"
+  },
+  "6T88_MWQ": {
+    "comp_id": "MWQ",
+    "smiles": "c1c([nH]cn1)CCC(=O)O"
+  },
+  "6TW5_9M2": {
+    "comp_id": "9M2",
+    "smiles": "Cc1c(c(n(n1)C)C)CCOc2cc(ccc2c3ccc4c(c3)c([nH]n4)CN(C)C)F"
+  },
+  "6TW7_NZB": {
+    "comp_id": "NZB",
+    "smiles": "CN(C)Cc1c2cc(ccc2n[nH]1)c3ccc(cc3OCCc4cccnc4)F"
+  },
+  "6VS3_R6V": {
+    "comp_id": "R6V",
+    "smiles": "c1cc(ccc1C2CCNCC2)Nc3nc(c4cc[nH]c4n3)c5cnn(c5)[C@H](CC#N)C6CCCC6"
+  },
+  "6VTA_AKN": {
+    "comp_id": "AKN",
+    "smiles": "C1[C@@H]([C@H]([C@@H]([C@H]([C@@H]1NC(=O)[C@H](CCN)O)O[C@@H]2[C@@H]([C@H]([C@@H]([C@H](O2)CO)O)N)O)O)O[C@@H]3[C@@H]([C@H]([C@@H]([C@H](O3)CN)O)O)O)N"
+  },
+  "6W59_SZD": {
+    "comp_id": "SZD",
+    "smiles": "c1cc(cc(c1)S(=O)(=O)Nc2ccc(cc2)OC(F)(F)F)NC(=O)c3cc(cc(c3)F)F"
+  },
+  "6WTN_RXT": {
+    "comp_id": "RXT",
+    "smiles": "c1c[nH]c2c1c(ncn2)c3cnn(c3)[C@H](CC#N)C4CCCC4"
+  },
+  "6X8D_ARA": {
+    "comp_id": "ARA",
+    "smiles": "C1[C@@H]([C@@H]([C@H]([C@@H](O1)O)O)O)O"
+  },
+  "6XAF_GDP": {
+    "comp_id": "GDP",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)OP(=O)(O)O)O)O)N=C(NC2=O)N"
+  },
+  "6XBO_5MC": {
+    "comp_id": "5MC",
+    "smiles": "CC1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)O)O)O"
+  },
+  "6XCT_478": {
+    "comp_id": "478",
+    "smiles": "CC(C)C[N@](C[C@H]([C@H](Cc1ccccc1)NC(=O)O[C@H]2CCOC2)O)S(=O)(=O)c3ccc(cc3)N"
+  },
+  "6XG5_TOP": {
+    "comp_id": "TOP",
+    "smiles": "COc1cc(cc(c1OC)OC)Cc2cnc(nc2N)N"
+  },
+  "6XHT_V2V": {
+    "comp_id": "V2V",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H](C(O2)COP(=O)(O)OP(=O)(O)OC[C@H]([C@H]([C@H](CO)O)O)O)O)O"
+  },
+  "6XM9_V55": {
+    "comp_id": "V55",
+    "smiles": "COc1cc(ccc1O)C=O"
+  },
+  "6XUM_30L": {
+    "comp_id": "30L",
+    "smiles": "c1cc(cc(c1)[N+](=O)[O-])CNC(=O)c2ccc(cc2OCC(=O)O)F"
+  },
+  "6Y7L_QMG": {
+    "comp_id": "QMG",
+    "smiles": "Cc1ccc(cc1c2cc(n3c2nccc3)C(=O)C)C(=O)NC4CC4"
+  },
+  "6YDY_K73": {
+    "comp_id": "K73",
+    "smiles": "c1ccc(cc1)C[C@H](C(=O)N2CCC[C@H]2C(=O)NCc3ccc(cc3)CN)N"
+  },
+  "6YJA_2BA": {
+    "comp_id": "2BA",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@H]4[C@H](O3)CO[P@](=O)(O[C@@H]5[C@@H](CO[P@](=O)(O4)O)O[C@H]([C@@H]5O)n6cnc7c6ncnc7N)O)O)N"
+  },
+  "6YMS_OZH": {
+    "comp_id": "OZH",
+    "smiles": "CC(C)C[C@@H](C(=O)O)NC(=O)CNP(=O)([C@@H](Cc1ccccc1)NC(=O)OCc2ccccc2)O"
+  },
+  "6YQV_8K2": {
+    "comp_id": "8K2",
+    "smiles": "c1cc(sc1S(=O)(=O)N)Cl"
+  },
+  "6YQW_82I": {
+    "comp_id": "82I",
+    "smiles": "CNC1=C(C(=O)N(N=C1)C)Cl"
+  },
+  "6YR2_T1C": {
+    "comp_id": "T1C",
+    "smiles": "CC(C)(C)NCC(=O)Nc1cc(c2c(c1O)C(=O)C3=C([C@]4([C@@H](C[C@@H]3C2)[C@@H](C(=C(C4=O)C(=O)N)O)[NH+](C)C)O)O)[NH+](C)C"
+  },
+  "6YRV_PJ8": {
+    "comp_id": "PJ8",
+    "smiles": "CCCCCCCCCCCCCCCCC"
+  },
+  "6YSP_PAL": {
+    "comp_id": "PAL",
+    "smiles": "C([C@@H](C(=O)O)NC(=O)CP(=O)(O)O)C(=O)O"
+  },
+  "6YT6_PKE": {
+    "comp_id": "PKE",
+    "smiles": "CN(c1c(cccn1)CNc2ccnc(n2)Nc3ccc4c(c3)CC(=O)N4)S(=O)(=O)C"
+  },
+  "6YYO_Q1K": {
+    "comp_id": "Q1K",
+    "smiles": "CS(=O)(=O)N1CCN(CC1)c2ccc3nncn3n2"
+  },
+  "6Z0R_Q4H": {
+    "comp_id": "Q4H",
+    "smiles": "c1c(c(ncn1)N)C#N"
+  },
+  "6Z14_Q4Z": {
+    "comp_id": "Q4Z",
+    "smiles": "CC1=[NH+][C@@H]2[C@H]([C@@H]([C@H](O[C@@H]2O1)COS(=O)(=O)[O-])O)O"
+  },
+  "6Z1C_7EY": {
+    "comp_id": "7EY",
+    "smiles": "Cc1ccc(cc1)c2csc3c2c(ncn3)SCCC(=O)O"
+  },
+  "6Z2C_Q5E": {
+    "comp_id": "Q5E",
+    "smiles": "C(CCC(=O)O)CCN1C(=O)[C@H]2[C@@H](C1=O)[C@]3(C(=C([C@@]2(C3(Cl)Cl)Cl)Cl)Cl)Cl"
+  },
+  "6Z4N_Q7B": {
+    "comp_id": "Q7B",
+    "smiles": "Cc1ccc(cc1)C[C@]2(C[C@H]2c3ccccc3)C(=O)O"
+  },
+  "6Z5Z_BDF": {
+    "comp_id": "BDF",
+    "smiles": "C1[C@H]([C@H]([C@@H]([C@](O1)(CO)O)O)O)O"
+  },
+  "6ZAE_ACV": {
+    "comp_id": "ACV",
+    "smiles": "CC(C)[C@H](C(=O)O)NC(=O)[C@H](CS)NC(=O)CCC[C@@H](C(=O)O)N"
+  },
+  "6ZC3_JOR": {
+    "comp_id": "JOR",
+    "smiles": "CS(=O)(=O)Nc1ccc(cc1C(=O)O)F"
+  },
+  "6ZCY_QF8": {
+    "comp_id": "QF8",
+    "smiles": "Cc1c(cn(n1)c2ccnc(n2)Nc3ccc4c(c3)c(nn4C)C(=O)NC)N[C@@H]5CCNC5"
+  },
+  "6ZK5_IMH": {
+    "comp_id": "IMH",
+    "smiles": "c1c(c2c([nH]1)C(=O)NC=N2)[C@H]3[C@@H]([C@@H]([C@H](N3)CO)O)O"
+  },
+  "6ZPB_3D1": {
+    "comp_id": "3D1",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3C[C@@H]([C@H](O3)CO)O)N"
+  },
+  "6ZR8_QOZ": {
+    "comp_id": "QOZ",
+    "smiles": "c1ccc(cc1)C(c2ccccc2)N3CCN(CC3)CC(=O)Nc4ccc(cc4)S(=O)(=O)N"
+  },
+  "6ZT2_QPK": {
+    "comp_id": "QPK",
+    "smiles": "c1cc(c(c(c1F)O)F)Cl"
+  },
+  "6ZX3_QRZ": {
+    "comp_id": "QRZ",
+    "smiles": "C1=C(N(C(=O)NC1=O)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)O)O)O)C(=S)N"
+  },
+  "6ZXQ_IMO": {
+    "comp_id": "IMO",
+    "smiles": "c1nc2c(c(n1)OP(=O)(O)O)ncn2[C@H]3[C@@H]([C@@H]([C@H](O3)COP(=O)(O)O)O)O"
+  },
+  "7A1P_QW2": {
+    "comp_id": "QW2",
+    "smiles": "CCC[C@@H](CC(=O)C(=O)O)C(=O)O"
+  },
+  "7A9E_R4W": {
+    "comp_id": "R4W",
+    "smiles": "CCS(=O)(=O)C"
+  },
+  "7A9H_TPP": {
+    "comp_id": "TPP",
+    "smiles": "Cc1c(sc[n+]1Cc2cnc(nc2N)C)CCO[P@](=O)(O)OP(=O)(O)O"
+  },
+  "7AA0_R6B": {
+    "comp_id": "R6B",
+    "smiles": "CC(C)N1CCC(c2c1ccc(c2)c3ccc(cc3)/C=C/C(=O)O)(C)C"
+  },
+  "7AFX_R9K": {
+    "comp_id": "R9K",
+    "smiles": "Cc1cccc2c1[nH]c(c2c3ccccc3Cl)C(=O)O"
+  },
+  "7AKL_RK5": {
+    "comp_id": "RK5",
+    "smiles": "Cc1c(oc2c1cc(cc2)c3cc(nc(c3)N)N)C"
+  },
+  "7AMC_73B": {
+    "comp_id": "73B",
+    "smiles": "C[C@H]1C[C@H](c2cc(ccc2N1C(=O)C)c3ccc(cc3)C(=O)O)Nc4ccc(cc4)Cl"
+  },
+  "7AN5_RDH": {
+    "comp_id": "RDH",
+    "smiles": "C=C(C(=O)O)Oc1cccc(c1)C(=O)O"
+  },
+  "7AS1_21G": {
+    "comp_id": "21G",
+    "smiles": "c1c(cnc2c1c(c[nH]2)c3ncc(c(n3)N[C@@H]4[C@H](C5CCC4CC5)C(=O)O)F)F"
+  },
+  "7AVI_S2Q": {
+    "comp_id": "S2Q",
+    "smiles": "C[C@H](c1cccc(c1)S(=O)(=O)N)NC(=O)c2cc3c(noc3nc2)C(C)C"
+  },
+  "7B0E_C2E": {
+    "comp_id": "C2E",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@H]4[C@H](O3)CO[P@@](=O)(O[C@@H]5[C@@H](CO[P@@](=O)(O4)O)O[C@H]([C@@H]5O)n6cnc7c6N=C(NC7=O)N)O)O)N=C(NC2=O)N"
+  },
+  "7B2C_TP7": {
+    "comp_id": "TP7",
+    "smiles": "C[C@H]([C@@H](C(=O)O)NC(=O)CCCCCCS)OP(=O)(O)O"
+  },
+  "7B94_ANP": {
+    "comp_id": "ANP",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@@](=O)(NP(=O)(O)O)O)O)O)N"
+  },
+  "7BA0_T5H": {
+    "comp_id": "T5H",
+    "smiles": "COc1ccc(cc1OC)CC[C@@H]2c3cccc(c3)OC[C@H]([C@H](COc4c(cc(cc4OC)[C@@H](C(=O)N5CCCC[C@H]5C(=O)O2)C6CCCCC6)OC)O)O"
+  },
+  "7BCP_GCO": {
+    "comp_id": "GCO",
+    "smiles": "C([C@H]([C@H]([C@@H]([C@H](C(=O)O)O)O)O)O)O"
+  },
+  "7BHX_TO5": {
+    "comp_id": "TO5",
+    "smiles": "CN(C)C1=NC(=O)N(c2c1ccc(c2)Cl)c3cccnc3"
+  },
+  "7BJ6_TVK": {
+    "comp_id": "TVK",
+    "smiles": "CC(C)(c1cc2c(c(c1)F)[C@@](N(C2=O)Cc3ccc(cn3)Cl)(c4ccc(cc4)Cl)OCC5(CC5)CO)O"
+  },
+  "7BJJ_TVW": {
+    "comp_id": "TVW",
+    "smiles": "c1c2c(ncnc2n[nH]1)N"
+  },
+  "7BKA_4JC": {
+    "comp_id": "4JC",
+    "smiles": "CCc1ccc(cc1)S(=O)(=O)N"
+  },
+  "7BLA_WCS": {
+    "comp_id": "WCS",
+    "smiles": "CN(C)CCCOc1ccc(cc1)c2cc(nc(n2)S(=O)(=O)C)NCCCn3cccn3"
+  },
+  "7BLG_GAL": {
+    "comp_id": "GAL",
+    "smiles": "C([C@@H]1[C@@H]([C@@H]([C@H]([C@@H](O1)O)O)O)O)O"
+  },
+  "7BMI_U4B": {
+    "comp_id": "U4B",
+    "smiles": "c1cnc(c(c1C(=O)O)F)C(=O)O"
+  },
+  "7BNH_BEZ": {
+    "comp_id": "BEZ",
+    "smiles": "c1ccc(cc1)C(=O)O"
+  },
+  "7BTT_F8R": {
+    "comp_id": "F8R",
+    "smiles": "CC(C)S(=O)(=O)c1ccccc1Nc2c3c(cc[nH]3)nc(n2)Nc4cc5c(cc4OC)CCN5C(=O)CN(C)C"
+  },
+  "7C0U_FGO": {
+    "comp_id": "FGO",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]4CC(C[C@@H]4[C@H](O3)COP(=O)(O)O[C@@H]5[C@H](O[C@H]([C@@H]5O)N6C=CC(=O)NC6=O)CO)(O)O)N=C(NC2=O)N"
+  },
+  "7C3U_AZG": {
+    "comp_id": "AZG",
+    "smiles": "c12c(nc(nc1O)N)nn[nH]2"
+  },
+  "7C6P_SQH": {
+    "comp_id": "SQH",
+    "smiles": "c1cc(c(cc1C2=CC(=O)c3ccc(c(c3O2)O)O)O)O"
+  },
+  "7C8Q_DSG": {
+    "comp_id": "DSG",
+    "smiles": "C([C@H](C(=O)O)N)C(=O)N"
+  },
+  "7CD9_FVR": {
+    "comp_id": "FVR",
+    "smiles": "CN1C[C@H](C[C@H](C1)NC2=Nc3cc[nH]c3C(=O)N2C)c4ccc(cc4)OCc5ccccc5"
+  },
+  "7CIJ_G0C": {
+    "comp_id": "G0C",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)/C=N/CCCSC)O"
+  },
+  "7CL8_TES": {
+    "comp_id": "TES",
+    "smiles": "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C"
+  },
+  "7CNQ_G8X": {
+    "comp_id": "G8X",
+    "smiles": "C1CN[C@@H]([C@@H]1O)C(=O)O"
+  },
+  "7CNS_PMV": {
+    "comp_id": "PMV",
+    "smiles": "C[C@@](CCOP(=O)(O)O)(CC(=O)O)O"
+  },
+  "7CTM_BDP": {
+    "comp_id": "BDP",
+    "smiles": "[C@@H]1([C@@H]([C@H](O[C@H]([C@@H]1O)O)C(=O)O)O)O"
+  },
+  "7CUO_PHB": {
+    "comp_id": "PHB",
+    "smiles": "c1cc(ccc1C(=O)O)O"
+  },
+  "7D0P_1VU": {
+    "comp_id": "1VU",
+    "smiles": "CCC(=O)SCCNC(=O)CCNC(=O)[C@@H](C(C)(C)COP(=O)(O)OP(=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)OP(=O)(O)O)O"
+  },
+  "7D5C_GV6": {
+    "comp_id": "GV6",
+    "smiles": "CC[C@H](C)[C@@H](C(=O)OP(=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)O)N"
+  },
+  "7D6O_MTE": {
+    "comp_id": "MTE",
+    "smiles": "C([C@@H]1C(=C([C@H]2[C@@H](O1)NC3=C(N2)C(=O)NC(=N3)N)S)S)OP(=O)(O)O"
+  },
+  "7D8Q_GZF": {
+    "comp_id": "GZF",
+    "smiles": "c1nc2c(n1[C@@H]3[C@H]([C@H]([C@H](O3)COP(=O)(O)OP(=S)(O)O)O)O)nc(nc2O)N"
+  },
+  "7D9L_GSF": {
+    "comp_id": "GSF",
+    "smiles": "C(CC(=O)N[C@@H](C[S@@](=O)O)C(=O)NCC(=O)O)[C@@H](C(=O)O)N"
+  },
+  "7DIN_MPO": {
+    "comp_id": "MPO",
+    "smiles": "C1COCCN1CCCS(=O)(=O)O"
+  },
+  "7DKT_GLF": {
+    "comp_id": "GLF",
+    "smiles": "C([C@@H]1[C@H]([C@@H]([C@H]([C@H](O1)F)O)O)O)O"
+  },
+  "7DQL_4CL": {
+    "comp_id": "4CL",
+    "smiles": "c1cc(c(cc1Cl)O)O"
+  },
+  "7DUA_HJ0": {
+    "comp_id": "HJ0",
+    "smiles": "Cc1cc(n[nH]1)NC(=O)c2cn(c3c2c(ncn3)N)C4(CC4)C"
+  },
+  "7E2S_BLA": {
+    "comp_id": "BLA",
+    "smiles": "Cc1c(c([nH]c1\\C=C/2\\C(=C(C(=O)N2)C=C)C)\\C=C/3\\C(=C(C(=N3)\\C=C/4\\C(=C(C(=O)N4)C)C=C)C)CCC(=O)O)CCC(=O)O"
+  },
+  "7E4L_MDN": {
+    "comp_id": "MDN",
+    "smiles": "C(P(=O)(O)O)P(=O)(O)O"
+  },
+  "7EBG_J0L": {
+    "comp_id": "J0L",
+    "smiles": "CC1(c2cccc(c2NC1=O)NC)C"
+  },
+  "7ECR_SIN": {
+    "comp_id": "SIN",
+    "smiles": "C(CC(=O)O)C(=O)O"
+  },
+  "7ED2_A3P": {
+    "comp_id": "A3P",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)COP(=O)(O)O)OP(=O)(O)O)O)N"
+  },
+  "7ELT_TYM": {
+    "comp_id": "TYM",
+    "smiles": "c1ccc2c(c1)c(c[nH]2)C[C@@H](C(=O)O[P@](=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)n4cnc5c4ncnc5N)O)O)N"
+  },
+  "7EN7_J79": {
+    "comp_id": "J79",
+    "smiles": "C[C@H](C(=O)O)O[C@@H]1[C@H]([C@@H](O[C@@H]([C@H]1O)COP(=O)(O)O)O)NC(=O)C"
+  },
+  "7EPV_FDA": {
+    "comp_id": "FDA",
+    "smiles": "Cc1cc2c(cc1C)N(C3=C(N2)C(=O)NC(=O)N3)C[C@@H]([C@@H]([C@@H](CO[P@@](=O)(O)O[P@@](=O)(O)OC[C@@H]4[C@H]([C@H]([C@@H](O4)n5cnc6c5ncnc6N)O)O)O)O)O"
+  },
+  "7ES1_UDP": {
+    "comp_id": "UDP",
+    "smiles": "C1=CN(C(=O)NC1=O)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@@](=O)(O)OP(=O)(O)O)O)O"
+  },
+  "7F51_BA7": {
+    "comp_id": "BA7",
+    "smiles": "c1ccc(cc1)C(=O)O[C@@H]2[C@@H]([C@H](O[C@H]2O)COP(=O)(O)OP(=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)n4cnc5c4ncnc5N)O)O)O"
+  },
+  "7F5D_EUO": {
+    "comp_id": "EUO",
+    "smiles": "CNc1cc(nc(n1)S(=O)(=O)C)c2ccc3c(c2)cc[nH]3"
+  },
+  "7F8T_FAD": {
+    "comp_id": "FAD",
+    "smiles": "Cc1cc2c(cc1C)N(C3=NC(=O)NC(=O)C3=N2)C[C@@H]([C@@H]([C@@H](CO[P@@](=O)(O)O[P@](=O)(O)OC[C@@H]4[C@H]([C@H]([C@@H](O4)n5cnc6c5ncnc6N)O)O)O)O)O"
+  },
+  "7FB7_8NF": {
+    "comp_id": "8NF",
+    "smiles": "Cc1cc(ncc1N)C"
+  },
+  "7FHA_ADX": {
+    "comp_id": "ADX",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)OS(=O)(=O)O)O)O)N"
+  },
+  "7FRX_O88": {
+    "comp_id": "O88",
+    "smiles": "c1cc(ccc1CNS(=O)(=O)c2ccc(c(c2)O)O)S(=O)(=O)c3ccc(c(c3)O)O"
+  },
+  "7FT9_4MB": {
+    "comp_id": "4MB",
+    "smiles": "CS(=O)(=O)Nc1ccc(cc1)C(=O)O"
+  },
+  "7JG0_GAR": {
+    "comp_id": "GAR",
+    "smiles": "C([C@@H]1[C@H]([C@H]([C@@H](O1)NC(=O)CN)O)O)OP(=O)([O-])[O-]"
+  },
+  "7JGW_V9S": {
+    "comp_id": "V9S",
+    "smiles": "c1ccc(cc1)CCOc2ccc(nc2C(=O)O)c3ccc4c(c3)/C(=N/Nc5nc(cs5)C(=O)NCc6ccccc6)/CCC4"
+  },
+  "7JHQ_VAJ": {
+    "comp_id": "VAJ",
+    "smiles": "c1cc(cc(c1)C(=O)O)c2ccc(cc2)C(=O)O"
+  },
+  "7JMV_4NC": {
+    "comp_id": "4NC",
+    "smiles": "c1cc(c(cc1[N+](=O)[O-])O)O"
+  },
+  "7JNB_A2G": {
+    "comp_id": "A2G",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@H]([C@H](O[C@@H]1O)CO)O)O"
+  },
+  "7JR8_VH7": {
+    "comp_id": "VH7",
+    "smiles": "CC(C)(C1CCC(CC1)NC(=O)c2ccc3nc(cn3c2)c4ccccc4)O"
+  },
+  "7JUD_MMA": {
+    "comp_id": "MMA",
+    "smiles": "CO[C@@H]1[C@H]([C@H]([C@@H]([C@H](O1)CO)O)O)O"
+  },
+  "7JXX_VP7": {
+    "comp_id": "VP7",
+    "smiles": "CC(C)(C#Cc1ccc2c(c1)c-3c([nH]2)CCCc4c3nc(nc4)N)O"
+  },
+  "7JY3_VUD": {
+    "comp_id": "VUD",
+    "smiles": "C[C@@H](C1=C(C=CC(=O)N1)n2cccn2)Oc3cc4cc(ccc4nc3N)F"
+  },
+  "7K0V_VQP": {
+    "comp_id": "VQP",
+    "smiles": "Cc1cc(c(cc1Nc2ccc3c(c2F)C(=O)N(C=N3)C)NC(=O)NCCC(C)(C)C)F"
+  },
+  "7K41_VUA": {
+    "comp_id": "VUA",
+    "smiles": "CC1CCN(CC1)c2ccnc(n2)NCCc3ccccc3"
+  },
+  "7KB1_WBJ": {
+    "comp_id": "WBJ",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)C/N=C(\\C=C)/C(=O)O)O"
+  },
+  "7KC5_BJZ": {
+    "comp_id": "BJZ",
+    "smiles": "CN1C(=O)N(C(=O)[C@]12CN(C[C@H]2c3ccc(cc3)C#N)c4ccc(cn4)C(=O)O)c5cc(cc(c5)Cl)Cl"
+  },
+  "7KFO_IAC": {
+    "comp_id": "IAC",
+    "smiles": "c1ccc2c(c1)c(c[nH]2)CC(=O)O"
+  },
+  "7KLX_WOV": {
+    "comp_id": "WOV",
+    "smiles": "Cc1ccc(n1c2ccc(cc2C(=O)O)O)C"
+  },
+  "7KM8_WPD": {
+    "comp_id": "WPD",
+    "smiles": "CCc1c(c(nc(n1)N)N)OCCCOc2cccc(c2)C[C@H](C(F)F)C(=O)O"
+  },
+  "7KP6_WTP": {
+    "comp_id": "WTP",
+    "smiles": "CN1CCN(CC1)c2ccc(cc2)Nc3ncc(c(n3)NC[C@H]4CCCO4)Cl"
+  },
+  "7KQU_YOF": {
+    "comp_id": "YOF",
+    "smiles": "c1cc(c(cc1C[C@@H](C(=O)O)N)F)O"
+  },
+  "7KRU_ATP": {
+    "comp_id": "ATP",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@@](=O)(O)O[P@](=O)(O)OP(=O)(O)O)O)O)N"
+  },
+  "7KZ9_XN7": {
+    "comp_id": "XN7",
+    "smiles": "C(CO)NCC(=O)NCCO"
+  },
+  "7L00_XCJ": {
+    "comp_id": "XCJ",
+    "smiles": "CS(=O)(=O)c1ccc2c(c1)sc(n2)NC(=O)Cc3csc(n3)n4cccc4"
+  },
+  "7L03_F9F": {
+    "comp_id": "F9F",
+    "smiles": "c1cc(ccc1OC(F)(F)F)S(=O)(=O)NCCOP(=O)(O)O"
+  },
+  "7L5F_XNG": {
+    "comp_id": "XNG",
+    "smiles": "CCCCCCCCCC(=O)NCCCC(=O)O"
+  },
+  "7L6D_BMF": {
+    "comp_id": "BMF",
+    "smiles": "CCOC(=O)Nc1cc(nn2c1nnc2C)c3ccc(c(c3)NS(=O)(=O)C)C"
+  },
+  "7L7C_XQ1": {
+    "comp_id": "XQ1",
+    "smiles": "COc1cccc(c1)c2ccc3c(c2)occ3CC(=O)O"
+  },
+  "7L81_UD4": {
+    "comp_id": "UD4",
+    "smiles": "C[C@@H]1[C@H]([C@@H]([C@H]([C@H](O1)O[P@@](=O)(O)O[P@](=O)(O)OC[C@@H]2[C@H]([C@H]([C@@H](O2)N3C=CC(=O)NC3=O)O)O)NC(=O)C)O)N"
+  },
+  "7LB3_XXS": {
+    "comp_id": "XXS",
+    "smiles": "C[C@@H]1COCCN1c2cc(nc(n2)c3cccc4c3cn[nH]4)C5(CC5)[S@](=N)(=O)C"
+  },
+  "7LCU_XTA": {
+    "comp_id": "XTA",
+    "smiles": "CN1CCN(CC1)c2ncc(cn2)Oc3cc(cc(n3)c4cc(cc(c4)Cl)Cl)CN5CCC(CC5)CC(=O)O"
+  },
+  "7LEV_0JO": {
+    "comp_id": "0JO",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)/C=N/C(=C)C(=O)O)O"
+  },
+  "7LJN_GTP": {
+    "comp_id": "GTP",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@](=O)(O)OP(=O)(O)O)O)O)N=C(NC2=O)N"
+  },
+  "7LMO_NYO": {
+    "comp_id": "NYO",
+    "smiles": "CCN(CC)c1ccc2c(c1)OC(=O)C(=C2C)CCN3C(=O)[C@]4(CCN(C4)C(=O)c5c[nH]cn5)NC3=O"
+  },
+  "7LOE_Y84": {
+    "comp_id": "Y84",
+    "smiles": "c1ccc2c(c1)cccc2F"
+  },
+  "7LOU_IFM": {
+    "comp_id": "IFM",
+    "smiles": "C1[C@@H]([C@H]([C@@H](CN1)O)O)CO"
+  },
+  "7LT0_ONJ": {
+    "comp_id": "ONJ",
+    "smiles": "Cc1ccc(cc1C)Sc2cc(ccc2O)C(=O)N3Cc4ccccc4C3"
+  },
+  "7LZD_YHY": {
+    "comp_id": "YHY",
+    "smiles": "Cc1ccc(c2c1[nH]c(c2)C(=O)Nc3cccc(c3)N4CCC(CC4)N(C)C)F"
+  },
+  "7LZQ_YJV": {
+    "comp_id": "YJV",
+    "smiles": "CN1C=Cc2c(ccn2CC(=O)Nc3ccncc3Cl)C1=O"
+  },
+  "7M31_TDR": {
+    "comp_id": "TDR",
+    "smiles": "CC1=CNC(=O)NC1=O"
+  },
+  "7M3H_YPV": {
+    "comp_id": "YPV",
+    "smiles": "CCCCc1ccc(cc1)NS(=O)(=O)c2ccc(c(c2)C(=O)O)O"
+  },
+  "7M41_YQG": {
+    "comp_id": "YQG",
+    "smiles": "Cc1cc(ccc1c2cc-3c(cc2Cl)NC(=O)n4c3nc(n4)C)NS(=O)(=O)c5[nH]ccn5"
+  },
+  "7M6K_YRJ": {
+    "comp_id": "YRJ",
+    "smiles": "c1cc(c[n+](c1)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)O)O)O)CNC(=O)Nc3ccc(cc3)[N+](=O)[O-]"
+  },
+  "7MAE_XUS": {
+    "comp_id": "XUS",
+    "smiles": "CC[C@H](C)CN(C[C@H]([C@H](Cc1ccc(cc1)OCP(=O)(OCC)OCC)NC(=O)O[C@H]2CO[C@@H]3[C@H]2CCO3)O)S(=O)(=O)c4ccc(cc4)N"
+  },
+  "7MEU_MGP": {
+    "comp_id": "MGP",
+    "smiles": "C[n+]1cn(c2c1C(=O)NC(=N2)N)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@@](=O)(O)O[P@@](=O)(O)OP(=O)(O)O)O)O"
+  },
+  "7MFP_Z7P": {
+    "comp_id": "Z7P",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)/C=N/[C@@H]2[C@H](O[C@@H]([C@@H]([C@H]2O)O)OP(=O)(O)OP(=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)N4C=CC(=O)NC4=O)O)O)C)O"
+  },
+  "7MGT_ZD4": {
+    "comp_id": "ZD4",
+    "smiles": "c1nc2c(nc(nc2n1[C@H]3[C@@H]([C@@H]([C@H](O3)COP(=O)(O)OP(=O)(O)O)O)O)Cl)N"
+  },
+  "7MGY_ZD1": {
+    "comp_id": "ZD1",
+    "smiles": "C1=C([C@H]([C@@H]([C@H]([C@H]1N)O)O)O[C@@H]2[C@@H]([C@H]([C@@H]([C@H](O2)CO)O)O)O)CO"
+  },
+  "7MMH_ZJY": {
+    "comp_id": "ZJY",
+    "smiles": "Cc1c(nc2cc(ccc2n1)OC)O[C@@H]3C[C@H]4C(=O)N[C@@]5(C[C@H]5/C=C\\CCCCC[C@@H](C(=O)N4C3)NC(=O)OCC6(CC6)C(F)(F)F)C(=O)NS(=O)(=O)C7(CC7)C"
+  },
+  "7MOI_HPS": {
+    "comp_id": "HPS",
+    "smiles": "c1ccc(cc1)OP(=O)(O)O"
+  },
+  "7MRH_ZMJ": {
+    "comp_id": "ZMJ",
+    "smiles": "CCS(=O)(=O)Nc1cccc(c1)C2=CN(C(=O)c3c2cccc3)C"
+  },
+  "7MS7_ZQ1": {
+    "comp_id": "ZQ1",
+    "smiles": "c1cc(ccc1C2CCN(CC2)S(=O)(=O)c3ccc(nc3)C(=O)NCC(=O)O)Cl"
+  },
+  "7MSR_DCA": {
+    "comp_id": "DCA",
+    "smiles": "CCNC(=O)CCNC(=O)[C@@H](C(C)(C)CO[P@@](=O)(O)O[P@@](=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)OP(=O)(O)O)O"
+  },
+  "7MWN_WI5": {
+    "comp_id": "WI5",
+    "smiles": "Cc1c(c2cccc3c2n1[C@@H](CO3)CN4CCOCC4)C(=O)c5cccc6c5cccc6"
+  },
+  "7MWU_ZPM": {
+    "comp_id": "ZPM",
+    "smiles": "C1CC(C1)C(=O)O"
+  },
+  "7MY1_IPE": {
+    "comp_id": "IPE",
+    "smiles": "CC(=C)CCO[P@@](=O)(O)OP(=O)(O)O"
+  },
+  "7MYU_ZR7": {
+    "comp_id": "ZR7",
+    "smiles": "COc1cnc(cn1)C(=O)Nc2ccc(c(c2)[C@]34CN(C[C@H]3CSC(=N4)N)c5ncc(cn5)F)F"
+  },
+  "7MZS_GLA": {
+    "comp_id": "GLA",
+    "smiles": "C([C@@H]1[C@@H]([C@@H]([C@H]([C@H](O1)O)O)O)O)O"
+  },
+  "7N03_ZRP": {
+    "comp_id": "ZRP",
+    "smiles": "CCCCCCNc1ccc2c(c1)c(c(cn2)C(=O)NC)Nc3ccccc3"
+  },
+  "7N4N_0BK": {
+    "comp_id": "0BK",
+    "smiles": "C[C@]1(CC[C@@](N=C1N)(CF)c2cc(ccc2F)NC(=O)c3cc(ncn3)OC)S(=O)(=O)C"
+  },
+  "7N4W_P4V": {
+    "comp_id": "P4V",
+    "smiles": "COc1ccc2c(c1OC)CN3CCc4cc(c(cc4[C@H]3C2)OC)OC"
+  },
+  "7N6F_0I1": {
+    "comp_id": "0I1",
+    "smiles": "c1cc(ccc1c2c(cncn2)N3CCC(CC3)C(=O)N4CC(C4)F)F"
+  },
+  "7N7B_T3F": {
+    "comp_id": "T3F",
+    "smiles": "C[C@@H]1[C@@H]([C@@H]([C@H]([C@H](O1)O[P@@](=O)(O)O[P@](=O)(O)OC[C@@H]2[C@H](C[C@@H](O2)N3C=C(C(=O)NC3=O)C)O)O)N)O"
+  },
+  "7N7H_CTP": {
+    "comp_id": "CTP",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@](=O)(O)O[P@](=O)(O)OP(=O)(O)O)O)O"
+  },
+  "7NA4_1I9": {
+    "comp_id": "1I9",
+    "smiles": "CCO[C@@H](c1nc2cc(nc(c2n1[C@H](C)C3CCC(CC3)C)c4cc(cnc4)Cl)C5=NOC(=O)N5)C6CC6"
+  },
+  "7NB4_U6Q": {
+    "comp_id": "U6Q",
+    "smiles": "CCc1c(c2c(ncnc2s1)N[C@H](Cc3ccccc3)C(=O)O)c4cccc(c4C)Cl"
+  },
+  "7NF0_BYN": {
+    "comp_id": "BYN",
+    "smiles": "Cc1cc2c3c(c1C)C(C[C@H](N3C4=C(N2C[C@@H]([C@@H]([C@@H](COP(=O)(O)O)O)O)O)N=C(NC4=O)O)O)(C)C"
+  },
+  "7NF3_4LU": {
+    "comp_id": "4LU",
+    "smiles": "Cc1cc2c3c(c1C)C(CC=[N+]3C4=C(N2C[C@@H]([C@@H]([C@@H](COP(=O)(O)O)O)O)O)NC(=O)NC4=O)(C)C"
+  },
+  "7NFB_GEN": {
+    "comp_id": "GEN",
+    "smiles": "c1cc(ccc1C2=COc3cc(cc(c3C2=O)O)O)O"
+  },
+  "7NGW_UAW": {
+    "comp_id": "UAW",
+    "smiles": "CC1CCN(CC1)C(=O)Nc2ccc(cc2)O"
+  },
+  "7NLK_UHK": {
+    "comp_id": "UHK",
+    "smiles": "Cc1ccc(cc1)NC(=O)[C@H](CC(C)C)S"
+  },
+  "7NLV_UJE": {
+    "comp_id": "UJE",
+    "smiles": "C1CNC[C@H]1NC(=O)CCCC[C@H]2[C@@H]3[C@H](CS2)NC(=O)N3"
+  },
+  "7NML_I7B": {
+    "comp_id": "I7B",
+    "smiles": "c1c(c(cc(c1Cl)S(=O)(=O)N)S(=O)(=O)N)N"
+  },
+  "7NP6_UK8": {
+    "comp_id": "UK8",
+    "smiles": "c1cc(c(c(c1)Cl)c2c(c(on2)c3c[nH]nc3)COc4ccc(cc4)C(=O)O)C(F)(F)F"
+  },
+  "7NPL_UKZ": {
+    "comp_id": "UKZ",
+    "smiles": "CCC[C@H]([C@H](c1cccc(c1C)Cl)O)NC(=O)c2cccc3c2CC(=O)N3"
+  },
+  "7NR6_UO8": {
+    "comp_id": "UO8",
+    "smiles": "c1nc2c(n1C3CCCCC3)NC(=NC2=S)N"
+  },
+  "7NR8_UOE": {
+    "comp_id": "UOE",
+    "smiles": "C[C@H](C(=O)N[C@H](CO)c1cccc(n1)N2CCN(CC2)C)N3Cc4ccc(cc4C3=O)c5c(cnc(n5)NC6CCOCC6)Cl"
+  },
+  "7NSW_HC4": {
+    "comp_id": "HC4",
+    "smiles": "c1cc(ccc1/C=C/C(=O)O)O"
+  },
+  "7NTG_F6R": {
+    "comp_id": "F6R",
+    "smiles": "C([C@H]([C@H]([C@@H](C(=O)CO)O)O)O)OP(=O)(O)O"
+  },
+  "7NU0_DCL": {
+    "comp_id": "DCL",
+    "smiles": "CC(C)C[C@@H](CO)N"
+  },
+  "7NUT_GLP": {
+    "comp_id": "GLP",
+    "smiles": "C([C@@H]1[C@H]([C@@H]([C@H]([C@H](O1)O)N)O)O)OP(=O)(O)O"
+  },
+  "7NXO_UU8": {
+    "comp_id": "UU8",
+    "smiles": "Cc1ccccc1Oc2cc(c(cc2C#N)F)N3C(=O)C=C(NC3=O)S(=O)(=O)c4ccccc4"
+  },
+  "7O0N_CDP": {
+    "comp_id": "CDP",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@@](=O)(O)OP(=O)(O)O)O)O"
+  },
+  "7O1T_5X8": {
+    "comp_id": "5X8",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CSC[C@@H](C(=O)O)N)O)O)N"
+  },
+  "7OCB_V88": {
+    "comp_id": "V88",
+    "smiles": "CC(C)N1CCC(CC1)Nc2c3cc(c(cc3nc(n2)NCCN(C)C)OCCCN4Cc5ccccc5C4)OC"
+  },
+  "7ODX_DGP": {
+    "comp_id": "DGP",
+    "smiles": "c1nc2c(n1[C@H]3C[C@@H]([C@H](O3)COP(=O)(O)O)O)N=C(NC2=O)N"
+  },
+  "7ODY_DGI": {
+    "comp_id": "DGI",
+    "smiles": "c1nc2c(n1[C@H]3C[C@@H]([C@H](O3)CO[P@](=O)(O)OP(=O)(O)O)O)N=C(NC2=O)N"
+  },
+  "7OEO_V9Z": {
+    "comp_id": "V9Z",
+    "smiles": "Cc1cc(cc(c1OC)C)C(=O)N(CC(c2ccccc2)c3ccccc3)CC(=O)NC"
+  },
+  "7OFF_VCB": {
+    "comp_id": "VCB",
+    "smiles": "c1ccc(cc1)[C@H](C(=O)O)NC(=O)c2cccc3c2-c4ccccc4C3=O"
+  },
+  "7OFK_VCH": {
+    "comp_id": "VCH",
+    "smiles": "CC(=O)N1Cc2cc(ccc2[C@@H]1C(=O)Nc3ccc(cc3)C(C(F)(F)F)(C(F)(F)F)O)S(=O)(=O)C"
+  },
+  "7OKC_VFE": {
+    "comp_id": "VFE",
+    "smiles": "CNC(=O)CN(Cc1ccc(cc1)n2cncn2)C(=O)CSc3ccccc3Cl"
+  },
+  "7OKF_VH5": {
+    "comp_id": "VH5",
+    "smiles": "CN1CCN(CC1)C2=CC(=O)Nc3c2cc(cc3)Nc4ccnc(c4C#N)Cl"
+  },
+  "7OLI_8HG": {
+    "comp_id": "8HG",
+    "smiles": "C1[C@@H]([C@H](O[C@H]1N2C3=C(C(=O)NC(=N3)N)NC2=O)CO)O"
+  },
+  "7OLT_58J": {
+    "comp_id": "58J",
+    "smiles": "CN1/C(=C\\c2ccc(cc2)OC)/C(=O)Nc3ccccc3C1=O"
+  },
+  "7OMJ_GCP": {
+    "comp_id": "GCP",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@@](=O)(CP(=O)(O)O)O)O)O)N=C(NC2=O)N"
+  },
+  "7OMX_CNA": {
+    "comp_id": "CNA",
+    "smiles": "c1cc(c[n+](c1)[C@@H]2C[C@@H]([C@H]([C@H]2O)O)COP(=O)(O)OP(=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)n4cnc5c4ncnc5N)O)O)C(=O)N"
+  },
+  "7OP9_06K": {
+    "comp_id": "06K",
+    "smiles": "c1[nH]c2c(n1)nc(nc2Cl)Cl"
+  },
+  "7OPG_06N": {
+    "comp_id": "06N",
+    "smiles": "CCCNc1nn2c(cnc2s1)c3ccc(cc3)O"
+  },
+  "7ORW_7WA": {
+    "comp_id": "7WA",
+    "smiles": "c1cc(c2c(c1)[nH]cn2)N"
+  },
+  "7OSO_0V1": {
+    "comp_id": "0V1",
+    "smiles": "C(CO)[C@@H](CO)O"
+  },
+  "7OU8_1XI": {
+    "comp_id": "1XI",
+    "smiles": "CC(=O)N[C@H]1CN\\2[C@H](CS/C2=N\\Cc3ccccc3)[C@H]([C@@H]1O)O"
+  },
+  "7OZ9_NGK": {
+    "comp_id": "NGK",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@H]([C@H](O[C@@H]1O)CO)OS(=O)(=O)O)O"
+  },
+  "7OZC_G6S": {
+    "comp_id": "G6S",
+    "smiles": "C([C@@H]1[C@@H]([C@@H]([C@H]([C@@H](O1)O)O)O)O)OS(=O)(=O)O"
+  },
+  "7P1F_KFN": {
+    "comp_id": "KFN",
+    "smiles": "C1=C(O[C@H]([C@@H]([C@H]1O)O)[C@@H]([C@@H](CO)O)O)C(=O)O"
+  },
+  "7P1M_4IU": {
+    "comp_id": "4IU",
+    "smiles": "Cn1c2cc(ccc2nc1CO[C@@H]3C=CO[C@@H]([C@@H]3O)CO)C(=O)O"
+  },
+  "7P2I_MFU": {
+    "comp_id": "MFU",
+    "smiles": "C[C@H]1[C@H]([C@H]([C@@H]([C@@H](O1)OC)O)O)O"
+  },
+  "7P2W_4QR": {
+    "comp_id": "4QR",
+    "smiles": "Cc1c(c(c([nH]1)C(=O)Nc2nc3c(cc(cc3s2)C(=O)O)OCc4cccc(c4)C(=O)O)Cl)Cl"
+  },
+  "7P4C_5OV": {
+    "comp_id": "5OV",
+    "smiles": "C([C@@H]1[C@H]([C@@H]([C@H]([C@@H]2[C@H]1OS(=O)(=O)N2)O)O)O)O"
+  },
+  "7P4J_5JK": {
+    "comp_id": "5JK",
+    "smiles": "C[C@H](CCCC(C)C)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2[C@@H](C=C4[C@@]3(CC[C@@H](C4)O)C)O)C"
+  },
+  "7P4V_DAT": {
+    "comp_id": "DAT",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3C[C@@H]([C@H](O3)CO[P@](=O)(O)OP(=O)(O)O)O)N"
+  },
+  "7P5T_5YG": {
+    "comp_id": "5YG",
+    "smiles": "COc1ccc(cc1)CNc2ccc(cc2)Cc3ccncc3"
+  },
+  "7P85_5ZG": {
+    "comp_id": "5ZG",
+    "smiles": "CCOP(=O)(Cc1ccc(cc1)C)O"
+  },
+  "7PA4_C": {
+    "comp_id": "C",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)O)O)O"
+  },
+  "7PGX_FMN": {
+    "comp_id": "FMN",
+    "smiles": "Cc1cc2c(cc1C)N(C3=NC(=O)NC(=O)C3=N2)C[C@@H]([C@@H]([C@@H](COP(=O)(O)O)O)O)O"
+  },
+  "7PIH_7QW": {
+    "comp_id": "7QW",
+    "smiles": "c1cc(cc(c1)c2ccc3c(c2)ccnc3O)CN4CCC(C4)N"
+  },
+  "7PJQ_OWH": {
+    "comp_id": "OWH",
+    "smiles": "CNC(=S)c1cccnc1"
+  },
+  "7PK0_BYC": {
+    "comp_id": "BYC",
+    "smiles": "CC(C)(CO[P@](=O)(O)O[P@@](=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)OP(=O)(O)O)[C@H](C(=O)NCCC(=O)NCCSC(=O)c4ccccc4)O"
+  },
+  "7PL1_SFG": {
+    "comp_id": "SFG",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)C[C@H](CC[C@@H](C(=O)O)N)N)O)O)N"
+  },
+  "7POM_7VZ": {
+    "comp_id": "7VZ",
+    "smiles": "COC(=O)c1cc(c(cc1Cl)SC2CCCCC2)S(=O)(=O)N"
+  },
+  "7PRI_7TI": {
+    "comp_id": "7TI",
+    "smiles": "c1c(c(cc(c1N)S(=O)(=O)N)S(=O)(=O)N)C(=C(Cl)Cl)Cl"
+  },
+  "7PRM_81I": {
+    "comp_id": "81I",
+    "smiles": "c1cc(oc1)C(=O)N2CCN(CC2)[C@@H]3CC(=O)N(C3)c4ccc(cc4)c5ccc(cc5)F"
+  },
+  "7PT3_3KK": {
+    "comp_id": "3KK",
+    "smiles": "CC(C)(COP(=O)(O)OP(=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)OP(=O)(O)O)[C@H](C(=O)NCCC(=O)NCCSC(=O)C(C)(C)O)O"
+  },
+  "7PUV_84Z": {
+    "comp_id": "84Z",
+    "smiles": "COC(=O)c1cc(c(cc1S(=O)(=O)c2ccccc2)Cl)S(=O)(=O)N"
+  },
+  "7Q19_DSM": {
+    "comp_id": "DSM",
+    "smiles": "CNCCCN1c2ccccc2CCc3c1cccc3"
+  },
+  "7Q25_8J9": {
+    "comp_id": "8J9",
+    "smiles": "CCCC[C@@H](C(=O)N[C@@H](Cc1ccc(cc1)O)C(=O)O)N[C@@H](CCc2ccccc2)C(=O)O"
+  },
+  "7Q27_8KC": {
+    "comp_id": "8KC",
+    "smiles": "CCCC[C@@H](C(=O)N[C@@H](Cc1c[nH]c2c1cccc2)C(=O)O)N[C@@H](CCc3ccccc3)C(=O)O"
+  },
+  "7Q2B_M6H": {
+    "comp_id": "M6H",
+    "smiles": "c1ccc(cc1)CC2NCCN2"
+  },
+  "7Q5I_I0F": {
+    "comp_id": "I0F",
+    "smiles": "CN(C)c1ccc(cc1)/C=C(\\C#N)/C(=O)N[C@H]2[C@@H]([C@H]([C@@H]([C@H](O2)CO)O)O)O"
+  },
+  "7QE4_NGA": {
+    "comp_id": "NGA",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@H]([C@H](O[C@H]1O)CO)O)O"
+  },
+  "7QF4_RBF": {
+    "comp_id": "RBF",
+    "smiles": "Cc1cc2c(cc1C)N(C3=NC(=O)NC(=O)C3=N2)C[C@@H]([C@@H]([C@@H](CO)O)O)O"
+  },
+  "7QFM_AY3": {
+    "comp_id": "AY3",
+    "smiles": "c1ccc2c(c1)/C(=C\\c3ccc(cc3)C(=O)O)/C(=O)N2"
+  },
+  "7QGP_DJ8": {
+    "comp_id": "DJ8",
+    "smiles": "Cc1cc(ccc1CNC(=O)Nc2ccc-3cc2OCCOCCNc4ccn5c(c3cn5)n4)Cl"
+  },
+  "7QHG_T3B": {
+    "comp_id": "T3B",
+    "smiles": "CC(C)C(=O)Nc1ncc(s1)C(=O)NCCN(Cc2ccccc2)C(=O)c3ccc(cc3)S(=O)(=O)Nc4ccccc4"
+  },
+  "7QHL_D5P": {
+    "comp_id": "D5P",
+    "smiles": "c1cnn(c1)c2ccc(cc2)CNc3c4c(c(n[nH]4)C5CCC5)nc(n3)SCCN"
+  },
+  "7QK0_EBL": {
+    "comp_id": "EBL",
+    "smiles": "C[C@H]1C[C@H](CN(C1)c2ncc(c(n2)Nc3ccc4c(c3)C5=C(C(=O)N4C)OCC([C@@H](N5)C6CC6)(F)F)Cl)O"
+  },
+  "7QPP_VDX": {
+    "comp_id": "VDX",
+    "smiles": "C[C@H](CCCC(C)(C)O)[C@H]1CC[C@@H]\\2[C@@]1(CCC/C2=C\\C=C/3\\C[C@H](C[C@@H](C3=C)O)O)C"
+  },
+  "7QSW_CAP": {
+    "comp_id": "CAP",
+    "smiles": "C([C@H]([C@H]([C@](COP(=O)(O)O)(C(=O)O)O)O)O)OP(=O)(O)O"
+  },
+  "7QTA_URI": {
+    "comp_id": "URI",
+    "smiles": "C1=CN(C(=O)NC1=O)[C@H]2[C@@H]([C@@H]([C@H](O2)CO)O)O"
+  },
+  "7R3D_APR": {
+    "comp_id": "APR",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@](=O)(O)OC[C@@H]4[C@H]([C@H]([C@@H](O4)O)O)O)O)O)N"
+  },
+  "7R59_I5F": {
+    "comp_id": "I5F",
+    "smiles": "c1cc2c(cc1O)sc3n2cnn3"
+  },
+  "7R6J_2I7": {
+    "comp_id": "2I7",
+    "smiles": "Cc1cc(cc(c1)NCc2cccc(c2)CN3C[C@@H]([C@H]([C@@H]([C@H]3CO)O)O)O)c4ncccn4"
+  },
+  "7R7R_AWJ": {
+    "comp_id": "AWJ",
+    "smiles": "Cc1c(sc(n1)[C@@](C)(CO)O)c2cc(c(nc2)N)O[C@H](C)c3cc(ccc3N4NC=CN4)F"
+  },
+  "7R9N_F97": {
+    "comp_id": "F97",
+    "smiles": "CC(C)n1c2cc(ncc2cn1)Nc3cc(nc(n3)N4CCC(C4)(F)F)[C@@H]5CCNC5"
+  },
+  "7RC3_SAH": {
+    "comp_id": "SAH",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CSCC[C@@H](C(=O)O)N)O)O)N"
+  },
+  "7REE_4LY": {
+    "comp_id": "4LY",
+    "smiles": "CCS(=O)(=O)N1CC(C1)(CC#N)n2cc(cn2)c3c4cc[nH]c4nc(n3)Nc5cc(c(c(c5)F)C6=CCN(CC6)C)F"
+  },
+  "7RH3_59O": {
+    "comp_id": "59O",
+    "smiles": "Cc1ccc(cc1)C(=O)O[C@H]2[C@H]([C@H](O[C@H]([C@H]2OC(=O)c3ccc(cc3[N+](=O)[O-])Cl)OC)CO)O"
+  },
+  "7RH8_UTP": {
+    "comp_id": "UTP",
+    "smiles": "C1=CN(C(=O)NC1=O)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@@](=O)(O)O[P@@](=O)(O)OP(=O)(O)O)O)O"
+  },
+  "7RKW_5TV": {
+    "comp_id": "5TV",
+    "smiles": "c1cc(ccc1[C@@H](Cn2ccnc2)OC(=O)c3cc(cc(c3)Cl)Cl)F"
+  },
+  "7RNI_60I": {
+    "comp_id": "60I",
+    "smiles": "Cc1c(c(n(n1)C)C)C(=O)N2CCN(CC2)Cc3nc4ccccc4n3CC(C)(C)C"
+  },
+  "7ROR_69X": {
+    "comp_id": "69X",
+    "smiles": "c1cc(ccc1C[C@@H](C(=O)OP(=O)(O)OC[C@@H]2[C@H]([C@H]([C@@H](O2)n3cnc4c3ncnc4N)O)O)N)O"
+  },
+  "7ROU_66I": {
+    "comp_id": "66I",
+    "smiles": "c1cc(ccc1C[C@@H](C(=O)NS(=O)(=O)OC[C@@H]2[C@H]([C@H]([C@@H](O2)n3c4c(c(ncn4)N)c(n3)OC(F)F)O)O)N)O"
+  },
+  "7RPZ_6IC": {
+    "comp_id": "6IC",
+    "smiles": "C#Cc1c(ccc2c1c(cc(c2)O)c3c(c4c(cn3)c(nc(n4)OC[C@@]56CCCN5C[C@@H](C6)F)N7C[C@H]8CC[C@@H](C7)N8)F)F"
+  },
+  "7RSV_7IQ": {
+    "comp_id": "7IQ",
+    "smiles": "C[C@@H]1COCCN1c2cc3n(n2)[C@@H]4CCC[C@@H]4NC3=O"
+  },
+  "7RUI_7QZ": {
+    "comp_id": "7QZ",
+    "smiles": "CC(c1ccccn1)(c2ccccn2)n3ccc4c3cc(cc4NS(=O)(=O)CC(F)(F)F)C5=CN(C(=O)C(=C5)NC(=O)Nc6ccccc6F)C"
+  },
+  "7RWO_7WN": {
+    "comp_id": "7WN",
+    "smiles": "CN1C(=O)C(=C(C=N1)Nc2ccc3c(c2)CNCC3)Cl"
+  },
+  "7RWS_4UR": {
+    "comp_id": "4UR",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@H]4[C@@H]([C@H](O3)COP(=O)(O[C@@H]5[C@@H](COP(=O)(O4)O)O[C@H]([C@@H]5O)n6cnc7c6N=C(NC7=O)N)O)O)N"
+  },
+  "7RZL_NPO": {
+    "comp_id": "NPO",
+    "smiles": "c1cc(ccc1[N+](=O)[O-])O"
+  },
+  "7S45_ACO": {
+    "comp_id": "ACO",
+    "smiles": "CC(=O)SCCNC(=O)CCNC(=O)[C@@H](C(C)(C)CO[P@](=O)(O)O[P@@](=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)OP(=O)(O)O)O"
+  },
+  "7S9H_7PP": {
+    "comp_id": "7PP",
+    "smiles": "Cc1cnc(c(c1OC)C)Cn2cc(c3c2nc(nc3Cl)N)C#CCC(C)(C)O"
+  },
+  "7SCW_GSP": {
+    "comp_id": "GSP",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@](=O)(O)OP(=S)(O)O)O)O)N=C(NC2=O)N"
+  },
+  "7SDD_4IP": {
+    "comp_id": "4IP",
+    "smiles": "[C@H]1([C@H](C([C@H]([C@H](C1OP(=O)(O)O)O)OP(=O)(O)O)OP(=O)(O)O)OP(=O)(O)O)O"
+  },
+  "7SED_8VD": {
+    "comp_id": "8VD",
+    "smiles": "c1c(ncnc1NC2CCNCC2)C(F)(F)F"
+  },
+  "7SFO_98L": {
+    "comp_id": "98L",
+    "smiles": "c1ccc(cc1)c2csc3c2c(nc(n3)Cl)NCc4cccc(c4)O"
+  },
+  "7SGV_L30": {
+    "comp_id": "L30",
+    "smiles": "c1ccc2c(c1)cccc2NC(=O)c3cccnc3"
+  },
+  "7SIU_9ID": {
+    "comp_id": "9ID",
+    "smiles": "Cn1cc(cn1)Nc2c(nc(cn2)C3=CCC[C@H](C3)NC(=O)c4ccccc4)C(=O)N"
+  },
+  "7SNE_9XR": {
+    "comp_id": "9XR",
+    "smiles": "c1cc(cc(c1)N[C@@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)OP(=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)n4cnc5c4ncnc5N)O)O)O)O)C(=O)N"
+  },
+  "7SSM_B7L": {
+    "comp_id": "B7L",
+    "smiles": "c1cc2cc(oc2c(c1)C(=O)O)CNC(=O)c3cnn4c3nccc4"
+  },
+  "7SUC_COM": {
+    "comp_id": "COM",
+    "smiles": "C(CS(=O)(=O)O)S"
+  },
+  "7SZA_DUI": {
+    "comp_id": "DUI",
+    "smiles": "c1cc2c(c(c1)N)C(=O)N(C2=O)[C@@H]3CCC(=O)NC3=O"
+  },
+  "7T0D_FPP": {
+    "comp_id": "FPP",
+    "smiles": "CC(=CCC/C(=C/CC/C(=C/CO[P@@](=O)(O)OP(=O)(O)O)/C)/C)C"
+  },
+  "7T0U_E3I": {
+    "comp_id": "E3I",
+    "smiles": "C[C@H]1CN(CCN1c2cc(c(cn2)Cl)NC(=O)Cn3cc(c4c3N=C(N(C4=O)C)C(F)(F)F)c5cc(c(c(c5)Cl)O)C(=O)N)C6COC6"
+  },
+  "7T1D_E7K": {
+    "comp_id": "E7K",
+    "smiles": "Cc1cn(c(n1)C)c2ccc3c(c2)CN(CC3)c4ncc(s4)Cc5ccc(cc5)n6cccn6"
+  },
+  "7T2I_E9F": {
+    "comp_id": "E9F",
+    "smiles": "C[C@@H]1COCCN1c2nc(cc(n2)C3(CC3)S(=N)(=O)C)c4ccnc5c4cc[nH]5"
+  },
+  "7T3E_SLB": {
+    "comp_id": "SLB",
+    "smiles": "CC(=O)N[C@@H]1[C@H](C[C@](O[C@H]1[C@@H]([C@@H](CO)O)O)(C(=O)O)O)O"
+  },
+  "7T3F_EM0": {
+    "comp_id": "EM0",
+    "smiles": "Cc1cc(ccc1F)S(=O)(=O)Nc2ccc3c(c2)CN(C(=O)N3)C"
+  },
+  "7T9O_GEI": {
+    "comp_id": "GEI",
+    "smiles": "Cc1c(c(c(c(n1)C)[C@@H](C(=O)O)OC(C)(C)C)N2CCC(CC2)(C)C)c3ccc(cc3)OCCc4ccc(cc4)F"
+  },
+  "7TB0_UD1": {
+    "comp_id": "UD1",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@@H]([C@H](O[C@@H]1O[P@@](=O)(O)O[P@@](=O)(O)OC[C@@H]2[C@H]([C@H]([C@@H](O2)N3C=CC(=O)NC3=O)O)O)CO)O)O"
+  },
+  "7TBU_S3P": {
+    "comp_id": "S3P",
+    "smiles": "C1[C@H]([C@@H]([C@@H](C=C1C(=O)O)OP(=O)(O)O)O)O"
+  },
+  "7TE8_P0T": {
+    "comp_id": "P0T",
+    "smiles": "CCCCCc1cc(c(c(c1)O)[C@@H]2C=C(CC[C@H]2C(=C)C)C)O"
+  },
+  "7TH4_FFO": {
+    "comp_id": "FFO",
+    "smiles": "c1cc(ccc1C(=O)NC(CCC(=O)O)C(=O)O)NCC2CNC3=C(N2C=O)C(=O)NC(=N3)N"
+  },
+  "7THI_PGA": {
+    "comp_id": "PGA",
+    "smiles": "C(C(=O)O)OP(=O)(O)O"
+  },
+  "7TM6_GPJ": {
+    "comp_id": "GPJ",
+    "smiles": "C(C(=O)O)[NH2+]CP(=O)(O)O"
+  },
+  "7TOM_5AD": {
+    "comp_id": "5AD",
+    "smiles": "C[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)O"
+  },
+  "7TS6_KMI": {
+    "comp_id": "KMI",
+    "smiles": "Cc1cc(nc(c1)N)c2cccc(c2)CNC"
+  },
+  "7TSF_H4B": {
+    "comp_id": "H4B",
+    "smiles": "C[C@@H]([C@@H]([C@H]1CNC2=C(N1)C(=O)NC(=N2)N)O)O"
+  },
+  "7TUO_KL9": {
+    "comp_id": "KL9",
+    "smiles": "Cc1cnc2c(c(sc2n1)C(=O)NCCc3ccc(cc3)C4C[C@H]5CC[C@@H](C4)N5)N"
+  },
+  "7TWC_CXS": {
+    "comp_id": "CXS",
+    "smiles": "C1CCC(CC1)NCCCS(=O)(=O)O"
+  },
+  "7TXK_LW8": {
+    "comp_id": "LW8",
+    "smiles": "C[N+](C)(C)[C@@H](CC1=CNC(=S)N1)C(=O)O"
+  },
+  "7TXP_0FX": {
+    "comp_id": "0FX",
+    "smiles": "C[C@@H]1[C@H]([C@@H]([C@H]([C@H](O1)OP(=O)(O)OP(=O)(O)OC[C@@H]2[C@H](C[C@@H](O2)N3C=C(C(=O)NC3=O)C)O)O)O)N"
+  },
+  "7TYP_KUR": {
+    "comp_id": "KUR",
+    "smiles": "Cc1c(nccn1)c2c(c3n(n2)C(=O)C=C(N3)c4ccc(cc4)C5CCCCC5)C(=O)N6CC(C6)CF"
+  },
+  "7U0U_FK5": {
+    "comp_id": "FK5",
+    "smiles": "C[C@@H]1C[C@@H]([C@@H]2[C@H](C[C@H]([C@@](O2)(C(=O)C(=O)N3CCCC[C@H]3C(=O)O[C@@H]([C@@H]([C@H](CC(=O)[C@@H](\\C=C(\\C1)/C)CC=C)O)C)/C(=C/[C@@H]4CC[C@H]([C@@H](C4)OC)O)/C)O)C)OC)OC"
+  },
+  "7U3J_L6U": {
+    "comp_id": "L6U",
+    "smiles": "CNC(=O)[C@H](CCc1ccccc1)NC(=O)[C@@H](c2cccs2)NC(=O)CNCc3ccc(cc3OC)OC"
+  },
+  "7UAS_MBU": {
+    "comp_id": "MBU",
+    "smiles": "CCn1cc(c(n1)C(F)(F)F)c2cc(cc3c2CCN(C3=O)[C@H](c4cc(ccn4)C)C5CC5)Cn6ccnc6C"
+  },
+  "7UAW_MF6": {
+    "comp_id": "MF6",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@H]4[C@@H]([C@H](O3)COP(=O)(OP(=O)(OC[C@@H]5[C@H]([C@H]([C@@H](O5)O4)O)O)O)O)O)N"
+  },
+  "7UEY_N0R": {
+    "comp_id": "N0R",
+    "smiles": "c1cc(ccc1CC(=O)N2CCN(CC2)c3ccc(nn3)Cl)NC(=O)CO"
+  },
+  "7UF2_5SP": {
+    "comp_id": "5SP",
+    "smiles": "C([C@H]([C@@H](C(=O)CO)O)O)OP(=O)(O)O"
+  },
+  "7UJ4_OQ4": {
+    "comp_id": "OQ4",
+    "smiles": "CCN(C(C)C)C(=O)c1cc(ccc1Oc2cncnc2N3CC4(C3)CCN(CC4)CC5CCC(CC5)NS(=O)(=O)CC)F"
+  },
+  "7UJ5_DGL": {
+    "comp_id": "DGL",
+    "smiles": "C(CC(=O)O)[C@H](C(=O)O)N"
+  },
+  "7UJF_R3V": {
+    "comp_id": "R3V",
+    "smiles": "C[C@H]1CCN(C1)CCOc2ccc(cc2)[C@@H]3c4ccc(cc4CC[C@@H]3c5ccccc5)O"
+  },
+  "7ULC_56B": {
+    "comp_id": "56B",
+    "smiles": "c1c(c2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)COP(=O)(O)O)O)O)N=C(NC2=O)N)CN[C@H]4C=C[C@@H]([C@@H]4O)O"
+  },
+  "7UMV_NUU": {
+    "comp_id": "NUU",
+    "smiles": "CC(C)(C)C(=O)CSc1ncc2c(n1)-c3cccnc3CC2"
+  },
+  "7UMW_NAD": {
+    "comp_id": "NAD",
+    "smiles": "c1cc(c[n+](c1)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@@](=O)([O-])O[P@@](=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)n4cnc5c4ncnc5N)O)O)O)O)C(=O)N"
+  },
+  "7UP3_NZ0": {
+    "comp_id": "NZ0",
+    "smiles": "c1cc(ccc1CO)c2ccnc(c2c3n[nH]nn3)S(=O)(=O)N"
+  },
+  "7UQ3_O2U": {
+    "comp_id": "O2U",
+    "smiles": "C1[C@H](C(=O)N(C1=O)O)CC(=O)O"
+  },
+  "7USH_82V": {
+    "comp_id": "82V",
+    "smiles": "c1cc2c(cc1c3csc4c3OC(=CC4=O)N5CCOCC5)OCCO2"
+  },
+  "7UTW_NAI": {
+    "comp_id": "NAI",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)O[P@@](=O)(O)OC[C@@H]4[C@H]([C@H]([C@@H](O4)N5C=CCC(=C5)C(=O)N)O)O)O)O)N"
+  },
+  "7UXS_OJC": {
+    "comp_id": "OJC",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@H]4[C@H](O3)COP(=O)(OP(=O)(OC[C@@H]5[C@H]([C@H]([C@@H](O5)O4)O)O)O)O)O)N"
+  },
+  "7UY4_SMI": {
+    "comp_id": "SMI",
+    "smiles": "C[C@@H]1CC([C@]2([C@@H](O1)O[C@@H]3[C@H]([C@@H]([C@@H]([C@@H]([C@H]3O2)NC)O)NC)O)O)(O)O"
+  },
+  "7UYB_OK0": {
+    "comp_id": "OK0",
+    "smiles": "c1cc(ccc1c2ccc(c(c2c3[nH]nnn3)S(=O)(=O)N)C(F)(F)F)C4CCNCC4"
+  },
+  "7V14_ORU": {
+    "comp_id": "ORU",
+    "smiles": "c1cc([n+](cc1c2c(ccc(c2F)Cl)n3cnnn3)[O-])[C@@H](CC4CC4)n5cc(cn5)c6cncs6"
+  },
+  "7V3N_AKG": {
+    "comp_id": "AKG",
+    "smiles": "C(CC(=O)O)C(=O)C(=O)O"
+  },
+  "7V3S_5I9": {
+    "comp_id": "5I9",
+    "smiles": "c1ccc2c(c1)Nc3c(c(ccn3)Oc4ccc(cc4F)NC(=O)C5(CC5)C(=O)Nc6ccc(cc6)F)O2"
+  },
+  "7V43_C4O": {
+    "comp_id": "C4O",
+    "smiles": "Cc1ccc(cc1)Cl"
+  },
+  "7V8Z_5YH": {
+    "comp_id": "5YH",
+    "smiles": "c1cc2c(cc1F)c3cc(ccc3n2C[C@H](CN4CCNC4=O)O)F"
+  },
+  "7VB8_STL": {
+    "comp_id": "STL",
+    "smiles": "c1cc(ccc1\\C=C\\c2cc(cc(c2)O)O)O"
+  },
+  "7VBU_6I4": {
+    "comp_id": "6I4",
+    "smiles": "Cc1ccc2c3cccc(c3[nH]c2n1)C4CC4"
+  },
+  "7VC5_9SF": {
+    "comp_id": "9SF",
+    "smiles": "c1ccc2c(c1)C(=O)N(C=N2)CC(=O)C[C@@H]3[C@H](CCCN3)O"
+  },
+  "7VJT_7IJ": {
+    "comp_id": "7IJ",
+    "smiles": "c1cc-2c(cc1O)OC(=O)c3c2oc4c3c(c(cc4)O)CN5CCCCC5"
+  },
+  "7VKZ_NOJ": {
+    "comp_id": "NOJ",
+    "smiles": "C1[C@@H]([C@H]([C@@H]([C@H](N1)CO)O)O)O"
+  },
+  "7VQ9_ISY": {
+    "comp_id": "ISY",
+    "smiles": "CC(=C)CCS[P@@](=O)(O)OP(=O)(O)O"
+  },
+  "7VWF_K55": {
+    "comp_id": "K55",
+    "smiles": "CCCCOc1ccc(cc1CNC(=O)c2ccc(cc2F)C(F)(F)F)C[C@H](CC)C(=O)O"
+  },
+  "7VYJ_CA0": {
+    "comp_id": "CA0",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)OC(=O)N)O)O)N"
+  },
+  "7W05_GMP": {
+    "comp_id": "GMP",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO)O)O)N=C(NC2=O)N"
+  },
+  "7W06_ITN": {
+    "comp_id": "ITN",
+    "smiles": "C=C(CC(=O)O)C(=O)O"
+  },
+  "7W6F_8I6": {
+    "comp_id": "8I6",
+    "smiles": "CCCCCCCCCc1cc(cc(c1C(=O)O)O)O"
+  },
+  "7WCF_ACP": {
+    "comp_id": "ACP",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@@](=O)(O)O[P@](=O)(CP(=O)(O)O)O)O)O)N"
+  },
+  "7WDT_NGS": {
+    "comp_id": "NGS",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@@H]([C@H](O[C@H]1O)COS(=O)(=O)O)O)O"
+  },
+  "7WJB_BGC": {
+    "comp_id": "BGC",
+    "smiles": "C([C@@H]1[C@H]([C@@H]([C@H]([C@@H](O1)O)O)O)O)O"
+  },
+  "7WKL_CAQ": {
+    "comp_id": "CAQ",
+    "smiles": "c1ccc(c(c1)O)O"
+  },
+  "7WL4_JFU": {
+    "comp_id": "JFU",
+    "smiles": "CCN1c2ccc(c3c2c(cc(n3)N4CCN(CC4)C)C1=O)NS(=O)(=O)c5ccc(cc5F)F"
+  },
+  "7WN5_JGL": {
+    "comp_id": "JGL",
+    "smiles": "CCS(=O)(=O)Nc1ccc(c(c1)C2=CN(C(=O)c3c2oc(c3)c4cnc[nH]4)C)Oc5ccc(cc5F)F"
+  },
+  "7WPW_F15": {
+    "comp_id": "F15",
+    "smiles": "CCCCCCCCCCCCCCC(=O)O"
+  },
+  "7WQQ_5Z6": {
+    "comp_id": "5Z6",
+    "smiles": "CC(C)(C)c1cc(cc(c1)C(C)(C)C)C(=O)/C=C/c2ccc(cc2)C(=O)O"
+  },
+  "7WUX_6OI": {
+    "comp_id": "6OI",
+    "smiles": "C(C[C@@H](C(=O)O)N)[C@@H]([C@H](COS(=O)(=O)O)N)O"
+  },
+  "7WUY_76N": {
+    "comp_id": "76N",
+    "smiles": "C[C@@H]1C=C[C@@H]2CCCC[C@@H]2[C@H]1C(=O)C3=C(C(=CNC3=O)[C@@]4(CC[C@@H]([C@H]5[C@@H]4O5)O)O)O"
+  },
+  "7WY1_D0L": {
+    "comp_id": "D0L",
+    "smiles": "CCCCCCCN1CCC[C@H]1C(=O)N[C@@H](Cc2ccccc2)C(=O)O"
+  },
+  "7X5N_5M5": {
+    "comp_id": "5M5",
+    "smiles": "Cc1c2c([nH]n1)OC(=C([C@@]2(c3cc(cc(c3)c4ccccc4)CO)C(C)C)C#N)N"
+  },
+  "7X9K_8OG": {
+    "comp_id": "8OG",
+    "smiles": "C1[C@@H]([C@H](O[C@H]1N2C3=C(C(=O)NC(=N3)N)NC2=O)COP(=O)(O)O)O"
+  },
+  "7XBV_APC": {
+    "comp_id": "APC",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@@](=O)(C[P@](=O)(O)OP(=O)(O)O)O)O)O)N"
+  },
+  "7XEK_9YX": {
+    "comp_id": "9YX",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)[C@H]2N[C@H](CS2)C(=O)O)O"
+  },
+  "7XFA_D9J": {
+    "comp_id": "D9J",
+    "smiles": "Cc1nc(n(n1)c2cc(ccc2C(F)(F)F)Cl)[C@H]3[C@@H]([C@H]([C@H]([C@H](O3)CO)O)n4cc(nn4)c5cc(c(c(c5)F)Cl)F)O"
+  },
+  "7XG5_PLP": {
+    "comp_id": "PLP",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)C=O)O"
+  },
+  "7XI7_4RI": {
+    "comp_id": "4RI",
+    "smiles": "CCCCCCc1c(c(nc(n1)N)N)c2ccccc2"
+  },
+  "7XIJ_EJ3": {
+    "comp_id": "EJ3",
+    "smiles": "CC(=O)n1cc(c2c1ccc(c2)OC)C(=O)Nc3cc(cc(c3F)c4cnn(c4)C)C(=O)O"
+  },
+  "7XJN_NSD": {
+    "comp_id": "NSD",
+    "smiles": "C(CN)CNCCCN"
+  },
+  "7XPO_UPG": {
+    "comp_id": "UPG",
+    "smiles": "C1=CN(C(=O)NC1=O)[C@H]2[C@@H]([C@@H]([C@H](O2)CO[P@](=O)(O)O[P@](=O)(O)O[C@@H]3[C@@H]([C@H]([C@@H]([C@H](O3)CO)O)O)O)O)O"
+  },
+  "7XQZ_FPF": {
+    "comp_id": "FPF",
+    "smiles": "CC(=CCC/C(=C/CC/C(=C(/CO[P@@](=O)(O)OP(=O)(O)O)\\F)/C)/C)C"
+  },
+  "7XRL_FWK": {
+    "comp_id": "FWK",
+    "smiles": "CC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)O"
+  },
+  "7YZU_DO7": {
+    "comp_id": "DO7",
+    "smiles": "CO[C@@H]1[C@@H]([C@H]([C@@H]([C@H](O1)CS(=O)(=O)O)O)O)O"
+  },
+  "7Z1Q_NIO": {
+    "comp_id": "NIO",
+    "smiles": "c1cc(cnc1)C(=O)O"
+  },
+  "7Z2O_IAJ": {
+    "comp_id": "IAJ",
+    "smiles": "COc1cccc2c1n3cnnc3s2"
+  },
+  "7Z7F_IF3": {
+    "comp_id": "IF3",
+    "smiles": "CNc1c2c(nc(n1)NC)n(cn2)C"
+  },
+  "7ZCC_OGA": {
+    "comp_id": "OGA",
+    "smiles": "C(C(=O)O)NC(=O)C(=O)O"
+  },
+  "7ZDY_6MJ": {
+    "comp_id": "6MJ",
+    "smiles": "CO[C@H]1[C@@H]([C@H]([C@@H](CO1)O)O)O"
+  },
+  "7ZF0_DHR": {
+    "comp_id": "DHR",
+    "smiles": "c1cc(ccc1[C@@H](C#N)O)O"
+  },
+  "7ZHP_IQY": {
+    "comp_id": "IQY",
+    "smiles": "CCC(CC)(C#Cc1ccc2c(c1)c-3c([nH]2)CCCc4c3nc(nc4)N)O"
+  },
+  "7ZL5_IWE": {
+    "comp_id": "IWE",
+    "smiles": "c1cc(sc1)CNc2cc(c(cc2c3[nH]nnn3)S(=O)(=O)N)Cl"
+  },
+  "7ZOC_T8E": {
+    "comp_id": "T8E",
+    "smiles": "CC(C(=O)Nc1ccc(cc1)C(=O)C)S"
+  },
+  "7ZTL_BCN": {
+    "comp_id": "BCN",
+    "smiles": "C(CO)N(CCO)CC(=O)O"
+  },
+  "7ZU2_DHT": {
+    "comp_id": "DHT",
+    "smiles": "C[C@]12CCC(=O)C[C@@H]1CC[C@@H]3[C@@H]2CC[C@]4([C@H]3CC[C@@H]4O)C"
+  },
+  "7ZXV_45D": {
+    "comp_id": "45D",
+    "smiles": "CC1=C(C(CCC1=O)(C)C)/C=C/C(=C/C=C/C(=C/C=C/C=C(/C=C/C=C(/C=C/C2=C(C(=O)CCC2(C)C)C)\\C)\\C)/C)/C"
+  },
+  "7ZXZ_K9R": {
+    "comp_id": "K9R",
+    "smiles": "c1c(cc(cc1CS)[C@H]2C(=O)C[C@H](C2=O)NC(=O)CCCC[C@H]3[C@@H]4[C@H](CS3)NC(=O)N4)CS"
+  },
+  "7ZYS_KNR": {
+    "comp_id": "KNR",
+    "smiles": "[H]/N=C(\\N)/N[C@@H]1CCCCNC(=O)[C@@H](NC(=O)[C@@H](NC(=O)Cc2cccc(c2)CNC(=O)CNC1=O)CCCCN)CCCC"
+  },
+  "7ZZB_KGX": {
+    "comp_id": "KGX",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CN(CC#Cc4nc5c(ncnc5n4[C@H]6[C@@H]([C@@H]([C@H](O6)CNC(=O)NCCN)O)O)N)CC(=O)O)O)O)N"
+  },
+  "7ZZW_KKW": {
+    "comp_id": "KKW",
+    "smiles": "c1cc(cc(c1)Cl)[C@@H]2C[C@@H](NC2)C(=O)N3CCN(CC3)c4c5c(ccn4)ccs5"
+  },
+  "8A1H_DLZ": {
+    "comp_id": "DLZ",
+    "smiles": "CC1=C(N(C2=NC(=O)NC(=O)C2=N1)C[C@@H]([C@@H]([C@@H](CO)O)O)O)C"
+  },
+  "8A2D_KXY": {
+    "comp_id": "KXY",
+    "smiles": "Cc1c(cc(c2c1nn(c2)[C@H](c3c4n(cn3)C5(CC4)CC5)C(=O)Nc6nccs6)C(F)F)C#Cc7ccc(cc7)CN8CCC(CC8)CO"
+  },
+  "8AAU_LH0": {
+    "comp_id": "LH0",
+    "smiles": "CC(C)C(=O)Nc1ncc(s1)c2cc(nn2c3c(cccc3Cl)Cl)C(F)F"
+  },
+  "8ACL_LQL": {
+    "comp_id": "LQL",
+    "smiles": "c1cc(cnc1)C(=O)N2CCN([C@@H](C2)C(=O)NCc3cccs3)c4ccc(c(c4)Cl)Cl"
+  },
+  "8AEM_LVF": {
+    "comp_id": "LVF",
+    "smiles": "c1cc2c(cc1Cl)c(c[nH]2)CC#N"
+  },
+  "8AEU_M0L": {
+    "comp_id": "M0L",
+    "smiles": "CC(C)Oc1cc(ccc1C2=N[C@H]([C@H](N2C(=O)N3CCNC(=O)C3=C)c4ccc(cc4)Cl)c5ccc(cc5)Cl)OC"
+  },
+  "8AIE_M7L": {
+    "comp_id": "M7L",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)C/N=C(\\CON)/C(=O)O)O"
+  },
+  "8AIJ_M9I": {
+    "comp_id": "M9I",
+    "smiles": "C[C@H]1[C@H]([C@H]([C@@H]([C@@H](O1)NC(=O)c2ccccc2)O)O)O"
+  },
+  "8AJX_FUM": {
+    "comp_id": "FUM",
+    "smiles": "C(=C/C(=O)O)\\C(=O)O"
+  },
+  "8AP0_PRP": {
+    "comp_id": "PRP",
+    "smiles": "C([C@@H]1[C@H]([C@H]([C@H](O1)O[P@@](=O)(O)OP(=O)(O)O)O)O)OP(=O)(O)O"
+  },
+  "8AQL_PLG": {
+    "comp_id": "PLG",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)CNCC(=O)O)O"
+  },
+  "8AUH_L9I": {
+    "comp_id": "L9I",
+    "smiles": "CCOC(=O)/C(=N\\O)/C(=O)C"
+  },
+  "8AY3_OE3": {
+    "comp_id": "OE3",
+    "smiles": "CCN1c2ccc(cc2C(=CC1=O)C)CNS(=O)(=O)c3ccccc3"
+  },
+  "8B8H_OJQ": {
+    "comp_id": "OJQ",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)C[NH2+]c2conc2O)O"
+  },
+  "8BN6_R53": {
+    "comp_id": "R53",
+    "smiles": "Cc1c(c(c([nH]1)C(=O)Nc2nc3c(cc(cc3s2)C(=O)O)N4CCOCC4)Cl)Cl"
+  },
+  "8BOM_QU6": {
+    "comp_id": "QU6",
+    "smiles": "Cc1ccc(cc1Nc2c3cnn(c3nc(n2)c4cccnc4)C)C(=O)Nc5cccc(c5)OC"
+  },
+  "8BPL_CP": {
+    "comp_id": "CP",
+    "smiles": "C(=O)(N)OP(=O)(O)O"
+  },
+  "8BRO_R7E": {
+    "comp_id": "R7E",
+    "smiles": "C[C@H]1[C@H]([C@H]([C@@H]([C@H](O1)NC(=O)c2ccc(o2)c3cccc(c3)CN)O)O)O"
+  },
+  "8BTI_RFO": {
+    "comp_id": "RFO",
+    "smiles": "COCC(=O)n1ccc2c1cccc2Cl"
+  },
+  "8C3N_ADP": {
+    "comp_id": "ADP",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)OP(=O)(O)O)O)O)N"
+  },
+  "8C5D_GTB": {
+    "comp_id": "GTB",
+    "smiles": "c1cc(ccc1CSC[C@@H](C(=O)NCC(=O)O)NC(=O)CC[C@@H](C(=O)O)N)[N+](=O)[O-]"
+  },
+  "8C5M_MTA": {
+    "comp_id": "MTA",
+    "smiles": "CSC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)O"
+  },
+  "8C7Y_TXV": {
+    "comp_id": "TXV",
+    "smiles": "CC(C)(C#N)c1cccc(c1)C(=O)Nc2ccc(c(c2F)C(=O)c3c[nH]c4c3cc(cn4)Cl)F"
+  },
+  "8CGC_LMR": {
+    "comp_id": "LMR",
+    "smiles": "C([C@@H](C(=O)O)O)C(=O)O"
+  },
+  "8CI0_8EL": {
+    "comp_id": "8EL",
+    "smiles": "Cc1ncc(c(n1)N)CN2CSC(=C2C)CCOP(=O)(O)OP(=O)(O)O"
+  },
+  "8CNH_V6U": {
+    "comp_id": "V6U",
+    "smiles": "Cn1cc(c(n1)c2cc(nc(n2)N)Cl)Cc3ccccc3C(=O)OC"
+  },
+  "8CSD_C5P": {
+    "comp_id": "C5P",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)O)O)O"
+  },
+  "8D19_GSH": {
+    "comp_id": "GSH",
+    "smiles": "C(CC(=O)N[C@@H](CS)C(=O)NCC(=O)O)[C@@H](C(=O)O)N"
+  },
+  "8D39_QDB": {
+    "comp_id": "QDB",
+    "smiles": "c1ccc(cc1)C(=O)c2ccc(cc2)C(=O)O"
+  },
+  "8D5D_5DK": {
+    "comp_id": "5DK",
+    "smiles": "[H]/N=C(\\N)/NCCC[C@H](C(=O)O)/N=C/c1c(cnc(c1O)C)COP(=O)(O)O"
+  },
+  "8DHG_T78": {
+    "comp_id": "T78",
+    "smiles": "CCN1C(=NN(C1=O)c2c(cc(c(n2)O[C@@H](C)C(F)(F)F)C(=O)Nc3c(ccnc3Cl)C)F)CO"
+  },
+  "8DKO_TFB": {
+    "comp_id": "TFB",
+    "smiles": "C1C[C@H](OC1)C(=O)O"
+  },
+  "8DP2_UMA": {
+    "comp_id": "UMA",
+    "smiles": "C[C@@H](C(=O)O)NC(=O)[C@@H](C)O[C@@H]1[C@H]([C@H](O[C@@H]([C@H]1O)CO)O[P@@](=O)(O)O[P@](=O)(O)OC[C@@H]2[C@H]([C@H]([C@@H](O2)N3C=CC(=O)NC3=O)O)O)NC(=O)C"
+  },
+  "8DSC_NCA": {
+    "comp_id": "NCA",
+    "smiles": "c1cc(cnc1)C(=O)N"
+  },
+  "8DW5_FQ7": {
+    "comp_id": "FQ7",
+    "smiles": "c1ccc(c(c1)C(=O)O)Nc2cc(cc(c2)Cl)Cl"
+  },
+  "8DZT_G4P": {
+    "comp_id": "G4P",
+    "smiles": "c1nc2c(n1[C@H]3[C@@H]([C@@H]([C@H](O3)CO[P@](=O)(O)OP(=O)(O)O)O[P@](=O)(O)OP(=O)(O)O)O)N=C(NC2=O)N"
+  },
+  "8E77_ULP": {
+    "comp_id": "ULP",
+    "smiles": "Cc1c(c(c(cn1)COP(=O)(O)O)/C=N/[C@@H]2[C@H]([C@H](O[C@@H]([C@H]2O)C(=O)O)O[P@@](=O)(O)O[P@@](=O)(O)OC[C@@H]3[C@H]([C@H]([C@@H](O3)N4C=CC(=O)NC4=O)O)O)NC(=O)C)O"
+  },
+  "8EAB_VN2": {
+    "comp_id": "VN2",
+    "smiles": "c1cc(cc(c1)C(F)(F)F)[C@@H](C(=O)Nc2cnccc2c3ccc(cc3)C(F)(F)F)NC(=O)c4cnccc4c5ccc(cc5)C(F)(F)F"
+  },
+  "8EAD_UY0": {
+    "comp_id": "UY0",
+    "smiles": "Cc1cnc(nc1Nc2ccc(c(c2)NS(=O)(=O)C(C)(C)C)Cl)Nc3ccc(cc3)OCCN4CCCC4"
+  },
+  "8ERS_WQO": {
+    "comp_id": "WQO",
+    "smiles": "c1ccc2c(c1)C[C@@H]([C@H]2OC(=O)c3ccc(cc3O)N)C(=O)O"
+  },
+  "8EX2_Q2Q": {
+    "comp_id": "Q2Q",
+    "smiles": "c1ccc(cc1)c2c(nn3c2N=C(CC3=O)c4ccccc4)C(F)(F)F"
+  },
+  "8EXL_799": {
+    "comp_id": "799",
+    "smiles": "Cc1nc(n(n1)C(C)C)c2cn3c(n2)-c4ccc(cc4OCC3)c5cnn(c5)C(C)(C)C(=O)N"
+  },
+  "8EYE_X4I": {
+    "comp_id": "X4I",
+    "smiles": "c1cc(ccc1c2cc(c(c(c2)F)F)F)[C@H](C(=O)NO)NC(=O)CNc3cc(cc(c3)F)F"
+  },
+  "8F4J_PHO": {
+    "comp_id": "PHO",
+    "smiles": "CCC1=C(/c/2c/c3c(c(c([nH]3)/cc/4\\nc(c5c6c(c(/c(/[nH]6)c/c1n2)C)C(=O)[C@@H]5C(=O)OC)[C@H]([C@@H]4C)CCC(=O)OC/C=C(\\C)/CCC[C@H](C)CCC[C@H](C)CCCC(C)C)C)C=C)C"
+  },
+  "8F8E_XJI": {
+    "comp_id": "XJI",
+    "smiles": "c1cc(c(cc1[C@H](CC(=O)N)NC(=O)c2c[nH]nc2c3ccc(cc3F)Cl)Cl)F"
+  },
+  "8FAV_4Y5": {
+    "comp_id": "4Y5",
+    "smiles": "c1cc(c(c(c1)Cl)C(=O)n2c3cccc(c3c(n2)c4ccc(cc4F)C(=O)O)F)C(F)(F)F"
+  },
+  "8FLN_Y7W": {
+    "comp_id": "Y7W",
+    "smiles": "C[C@@H](C(F)(F)F)n1c(c(c(n1)c2ccc(cc2)CNC(=O)c3cc(ccc3OC)F)C(=O)N)N"
+  },
+  "8FLV_ZB9": {
+    "comp_id": "ZB9",
+    "smiles": "CN(c1c2cc[nH]c2ncn1)[C@@H]3CCCN(C3)C(=O)CNc4cc(cc(c4)Cl)Cl"
+  },
+  "8FO5_Y4U": {
+    "comp_id": "Y4U",
+    "smiles": "CC(=O)c1ccn(c1)S(=O)(=O)c2ccccc2"
+  },
+  "8FV9_80J": {
+    "comp_id": "80J",
+    "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@@H]([C@@H]([C@H](O2)COP(=O)(O)OP(=O)(O)OP(=O)(O)O)O)F"
+  },
+  "8G0V_YHT": {
+    "comp_id": "YHT",
+    "smiles": "C#CCOP(=O)(O)OC[C@@H]1[C@H]([C@H]([C@@H](O1)n2cnc3c2ncnc3N)O)O"
+  },
+  "8G43_ZU6": {
+    "comp_id": "ZU6",
+    "smiles": "CNC(=O)CN1C(=Nc2ccccc2C1=O)CCC(=O)O"
+  },
+  "8G6P_API": {
+    "comp_id": "API",
+    "smiles": "C(C[C@H](C(=O)O)N)C[C@@H](C(=O)O)N"
+  },
+  "8GFD_ZHR": {
+    "comp_id": "ZHR",
+    "smiles": "CC(=O)N[C@@H]1[C@H]([C@@H]([C@H](O[C@H]1OCCc2ccc3c(c2)cco3)CO)O)O"
+  },
+  "8H0M_2EH": {
+    "comp_id": "2EH",
+    "smiles": "CCCC[C@H](CC)CO"
+  },
+  "8HFN_XGC": {
+    "comp_id": "XGC",
+    "smiles": "COc1ccc(cn1)c2cccc(c2)S(=O)(=O)NC(=O)[C@H](CS)N"
+  },
+  "8HO0_3ZI": {
+    "comp_id": "3ZI",
+    "smiles": "c1cc2c(c[nH]c2c(c1)F)C[C@H]3C(=O)N4CCC[C@H]4C(=O)N3"
+  },
+  "8SLG_G5A": {
+    "comp_id": "G5A",
+    "smiles": "c1nc(c2c(n1)n(cn2)[C@H]3[C@@H]([C@@H]([C@H](O3)COS(=O)(=O)NC(=O)CN)O)O)N"
+  }
+}
