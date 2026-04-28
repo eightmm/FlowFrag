@@ -143,6 +143,12 @@ class UnifiedDataset(Dataset):
         receptor_aug_prob: float = 0.0,
         alt_receptor_root: str | Path | None = None,
         alt_receptor_mapping: str | Path | None = None,
+        # Wider, range-based augmentation (overrides the ± noise / single
+        # sigma when set). Set both to None to fall back to the symmetric
+        # ``pocket_cutoff_noise`` and fixed ``translation_sigma`` behavior.
+        pocket_cutoff_range: tuple[float, float] | None = None,
+        prior_sigma_range: tuple[float, float] | None = None,
+        prior_sigma_log_uniform: bool = True,
     ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -152,6 +158,13 @@ class UnifiedDataset(Dataset):
         self.translation_sigma = translation_sigma
         self.rotation_augmentation = rotation_augmentation
         self.deterministic = deterministic
+        self.pocket_cutoff_range = (
+            tuple(pocket_cutoff_range) if pocket_cutoff_range is not None else None
+        )
+        self.prior_sigma_range = (
+            tuple(prior_sigma_range) if prior_sigma_range is not None else None
+        )
+        self.prior_sigma_log_uniform = prior_sigma_log_uniform
         self.seed = seed
         self.receptor_aug_prob = receptor_aug_prob
         self.alt_receptor_root: Path | None = (
@@ -249,7 +262,17 @@ class UnifiedDataset(Dataset):
             ref_center = ref_center + torch.randn(
                 3, generator=jitter_gen, dtype=ref_center.dtype
             ) * self.pocket_jitter_sigma
-        if self.pocket_cutoff_noise > 0:
+        if self.pocket_cutoff_range is not None:
+            # Wider explicit Uniform[lo, hi] sampling. Lets training see a
+            # broader pocket-context distribution (e.g. (5.0, 12.0) for
+            # cofactor-heavy ligands that need more residues vs tight
+            # drug-like that need fewer).
+            cutoff_gen = self._make_generator(idx, stream_offset=6)
+            lo, hi = self.pocket_cutoff_range
+            u = torch.rand(1, generator=cutoff_gen).item()
+            cutoff = lo + u * (hi - lo)
+            cutoff = max(cutoff, 4.0)
+        elif self.pocket_cutoff_noise > 0:
             cutoff_gen = self._make_generator(idx, stream_offset=6)
             # Symmetric Uniform[-noise, +noise] around the configured cutoff
             # (e.g. cutoff=8, noise=2 → 6..10 Å). The previous formula was
@@ -305,10 +328,26 @@ class UnifiedDataset(Dataset):
         z = torch.randn(1, generator=time_gen, dtype=T_1.dtype).item()
         t = 1.0 / (1.0 + math.exp(-z))
 
+        # Per-sample translation prior σ. Range-based sampling lets the model
+        # see priors of varying width — at inference we then have one
+        # network that handles σ ∈ [σ_min, σ_max] without retraining.
+        # Log-uniform is the natural choice for a scale parameter; uniform
+        # is offered as a fallback when prior_sigma_log_uniform=False.
+        if self.prior_sigma_range is not None:
+            sigma_gen = self._make_generator(idx, stream_offset=7)
+            lo, hi = self.prior_sigma_range
+            u = torch.rand(1, generator=sigma_gen).item()
+            if self.prior_sigma_log_uniform:
+                trans_sigma = math.exp(math.log(lo) + u * (math.log(hi) - math.log(lo)))
+            else:
+                trans_sigma = lo + u * (hi - lo)
+        else:
+            trans_sigma = self.translation_sigma
+
         T_0, q_0 = sample_prior_poses(
             n_frags,
             pocket_center=torch.zeros(3, dtype=T_1.dtype),
-            translation_sigma=self.translation_sigma,
+            translation_sigma=trans_sigma,
             frag_sizes=frag_sizes,
             generator=prior_gen,
         )

@@ -14,17 +14,37 @@ model:
 data:
   data_dir: data/plinder_processed
   split_file: data/splits/plinder_v4.json
-  pocket_cutoff: 8.0
-  pocket_jitter_sigma: 2.0
-  pocket_cutoff_noise: 2.0
+
+  # Pocket / size filters
   min_atoms: 5
-  max_atoms: 120                 # was 80; expanded for cofactors / large ligands
-  max_frags: 30                  # was 20; expanded for cofactors
+  max_atoms: 120                  # was 80; expanded for cofactors / large ligands
+  max_frags: 30                   # was 20; expanded for cofactors
   min_protein_res: 50
+
+  # Single-value fallbacks (used by val + when range is null at train time)
+  pocket_cutoff: 8.0
+  pocket_jitter_sigma: 2.0        # N(0, σ²·I) Å on pocket center
+  pocket_cutoff_noise: 0.0        # ignored when pocket_cutoff_range is set
   prior_sigma: 3.0
+
+  # Range-based per-sample sampling at training (val turns these off):
+  #
+  # pocket_cutoff_range — Uniform[6, 12] Å. Covers tight inhibitors (6 Å) →
+  # cofactor sites needing 10-12 Å of context. 5 Å leaves ~6 residues which
+  # is too thin for fragment hopping; 13+ Å risks OOM on B200 batch=64.
+  pocket_cutoff_range: [6.0, 12.0]
+
+  # prior_sigma_range — Log-Uniform[2, 6] Å. Geometric mean √12 ≈ 3.46 Å
+  # matches the empirical T_1 axis std (3.4 Å, our deploy default σ=3) so
+  # most training mass sits near deploy distribution while still exposing
+  # blind-docking-like (σ=5-6) and tight (σ=2) regimes for robustness.
+  prior_sigma_range: [2.0, 6.0]
+  prior_sigma_log_uniform: true
+
   rotation_augmentation: ligand_uniform
   deterministic: false
   num_workers: 8
+
   # Receptor augmentation: 30% chance to swap holo with apo / AF2-pred
   # receptor (28k of 130k systems have HQ alt structures).
   receptor_aug_prob: 0.3

@@ -219,6 +219,15 @@ class Trainer:
             receptor_aug_prob=dcfg.get("receptor_aug_prob", 0.0),
             alt_receptor_root=dcfg.get("alt_receptor_root"),
             alt_receptor_mapping=dcfg.get("alt_receptor_mapping"),
+            # Range-based pocket cutoff and prior σ sampling (None → use
+            # legacy single-value behavior). Setting these lets the model
+            # see a wider distribution at training time and stay calibrated
+            # under any single-value choice at inference.
+            pocket_cutoff_range=tuple(dcfg["pocket_cutoff_range"])
+                if dcfg.get("pocket_cutoff_range") else None,
+            prior_sigma_range=tuple(dcfg["prior_sigma_range"])
+                if dcfg.get("prior_sigma_range") else None,
+            prior_sigma_log_uniform=dcfg.get("prior_sigma_log_uniform", True),
         )
 
         split_file = dcfg.get("split_file")
@@ -230,6 +239,8 @@ class Trainer:
         val_kwargs["pocket_jitter_sigma"] = 0.0
         val_kwargs["pocket_cutoff_noise"] = 0.0
         val_kwargs["receptor_aug_prob"] = 0.0  # crystal-only val
+        val_kwargs["pocket_cutoff_range"] = None
+        val_kwargs["prior_sigma_range"] = None
 
         if split_file is not None:
             train_ds = DatasetClass(split_file=split_file, split_key="train", **ds_kwargs)
