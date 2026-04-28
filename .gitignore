@@ -27,6 +27,10 @@ data/raw/
 data/processed/
 data/conf_train/
 data/conf_val/
+data/conf_train_*/
+data/conf_val_*/
+data/plinder*
+data/splits/plinder*.json
 *.sdf
 *.pdb
 *.mol2

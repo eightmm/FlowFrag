@@ -171,17 +171,19 @@ def main() -> None:
         np.arange(atom_pose_ptr[p_idx], atom_pose_ptr[p_idx + 1], dtype=np.int64)
         for p_idx in tr_sample_poses
     ])
-    scalar_mu = atom_scalar_all[tr_atom_mask_idx].mean(axis=0).astype(np.float32)
-    scalar_sd = atom_scalar_all[tr_atom_mask_idx].std(axis=0).astype(np.float32) + 1e-6
-    norms_mu = atom_norms_all[tr_atom_mask_idx].mean(axis=0).astype(np.float32)
-    norms_sd = atom_norms_all[tr_atom_mask_idx].std(axis=0).astype(np.float32) + 1e-6
-
-    atom_scalar_t = torch.from_numpy(
-        ((atom_scalar_all - scalar_mu) / scalar_sd).astype(np.float32)
-    ).to(device)
-    atom_norms_t = torch.from_numpy(
-        ((atom_norms_all - norms_mu) / norms_sd).astype(np.float32)
-    ).to(device)
+    # Compute mu/sd in fp32 from the (small) train sample, then normalize the
+    # full fp16 array in-place to avoid 2x transient CPU copies.
+    scalar_mu = atom_scalar_all[tr_atom_mask_idx].astype(np.float32).mean(axis=0)
+    scalar_sd = atom_scalar_all[tr_atom_mask_idx].astype(np.float32).std(axis=0) + 1e-6
+    norms_mu = atom_norms_all[tr_atom_mask_idx].astype(np.float32).mean(axis=0)
+    norms_sd = atom_norms_all[tr_atom_mask_idx].astype(np.float32).std(axis=0) + 1e-6
+    np.subtract(atom_scalar_all, scalar_mu.astype(np.float16), out=atom_scalar_all, casting="unsafe")
+    np.divide(atom_scalar_all, scalar_sd.astype(np.float16), out=atom_scalar_all, casting="unsafe")
+    np.subtract(atom_norms_all, norms_mu.astype(np.float16), out=atom_norms_all, casting="unsafe")
+    np.divide(atom_norms_all, norms_sd.astype(np.float16), out=atom_norms_all, casting="unsafe")
+    # Cast happens during GPU transfer (single allocation, no transient CPU fp32 copy).
+    atom_scalar_t = torch.from_numpy(atom_scalar_all).to(device, dtype=torch.float32)
+    atom_norms_t = torch.from_numpy(atom_norms_all).to(device, dtype=torch.float32)
     atom_disp_t = torch.from_numpy(atom_disp_all.astype(np.float32)).to(device)
     pose_rmsd_t = torch.from_numpy(pose_rmsd_all.astype(np.float32)).to(device)
     # Pose-stats normalization computed on TRAIN poses only (no val leakage).

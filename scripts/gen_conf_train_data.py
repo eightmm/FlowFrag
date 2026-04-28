@@ -55,6 +55,8 @@ def main() -> None:
     ap.add_argument("--sigma", type=float, default=5.0)
     ap.add_argument("--gamma", type=float, default=0.4)
     ap.add_argument("--shard_size", type=int, default=500, help="Complexes per shard")
+    ap.add_argument("--shard_idx_start", type=int, default=0,
+                    help="Starting shard index (use to resume without overwriting earlier shards)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--device", default=None)
@@ -90,7 +92,7 @@ def main() -> None:
 
     # Accumulators (per shard). Per-atom arrays concatenate flat; per-pose arrays grow.
     cur_complexes = 0
-    shard_idx = 0
+    shard_idx = args.shard_idx_start
     buf_atom_scalar: list[np.ndarray] = []
     buf_atom_norms: list[np.ndarray] = []
     buf_atom_disp: list[np.ndarray] = []

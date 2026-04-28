@@ -114,6 +114,17 @@ with `--num_samples > 1` — `--confidence_ckpt` defaults to
 `weights/confidence_v1.pt`.  Pass `--confidence_ckpt ""` to disable and fall
 back to first-pose-out-of-N.
 
+For benchmark evaluation, pass the deployed checkpoint explicitly:
+
+```bash
+python scripts/eval_benchmark.py \
+  --data_dir /path/to/Astex-or-PoseBusters \
+  --checkpoint weights/best.pt \
+  --config configs/train_v3_b200.yaml \
+  --num_samples 40 \
+  --confidence_ckpt weights/confidence_v1.pt
+```
+
 ## Selection ceiling and bottleneck
 
 | Dataset | Oracle <2 Å | Top-5 ranker ceiling | **Confidence v1** | Selection gap | Sampling gap |

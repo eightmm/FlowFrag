@@ -19,7 +19,7 @@ from rdkit.Chem import AllChem, rdFMCS, rdMolAlign, rdmolops
 
 
 REFINE_METHODS = ("none", "mmff")
-SELECT_METHODS = ("oracle", "vina")
+SELECT_METHODS = ("oracle", "vina", "confidence")
 V2_IDS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "posebusters_v2_ids.txt"
 
 

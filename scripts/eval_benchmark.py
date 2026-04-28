@@ -4,7 +4,7 @@
 Auto-detects dataset format from file naming conventions.
 Samples N poses once per complex, then evaluates all combinations of:
   - Refinement: none, mmff
-  - Selection:  oracle (best-RMSD), cluster
+  - Selection:  oracle (best-RMSD), vina, optionally confidence
 
 Usage:
     # PoseBusters v2 (308)
@@ -70,6 +70,10 @@ def main() -> None:
     parser.add_argument("--schedule_power", type=float, default=3.0)
     parser.add_argument("--sigma", type=float, default=None)
     parser.add_argument("--num_samples", type=int, default=40)
+    parser.add_argument("--pocket_cutoff", type=float, default=8.0,
+                        help="Residue-aware pocket cutoff (Å). Model trained at 8.0 with 6-10 noise.")
+    parser.add_argument("--confidence_ckpt", type=str, default="",
+                        help="Path to confidence head checkpoint. When set, adds 'confidence' selector.")
     parser.add_argument("--smiles_init", action="store_true",
                         help="Re-generate 3D conformer via ETKDGv3+MMFF (simulate SMILES input)")
     parser.add_argument("--smiles_map", type=str, default=None,
@@ -99,6 +103,10 @@ def main() -> None:
         args.out_dir = f"outputs/eval_{dataset_name}"
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    select_methods = (
+        SELECT_METHODS if args.confidence_ckpt
+        else tuple(s for s in SELECT_METHODS if s != "confidence")
+    )
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
@@ -148,12 +156,12 @@ def main() -> None:
     smiles_tag = ", smiles_init=True" if args.smiles_init else ""
     print(f"Settings: {args.num_samples} samples, {args.num_steps} steps, "
           f"schedule={args.time_schedule}, sigma={sigma}{smiles_tag}")
-    print(f"Evaluating: {len(REFINE_METHODS)} refinements x {len(SELECT_METHODS)} selections "
-          f"= {len(REFINE_METHODS) * len(SELECT_METHODS)} combos\n")
+    print(f"Evaluating: {len(REFINE_METHODS)} refinements x {len(select_methods)} selections "
+          f"= {len(REFINE_METHODS) * len(select_methods)} combos\n")
 
     # --- Per-combo accumulators ---
     combo_results: dict[tuple[str, str], list[dict]] = {
-        (r, s): [] for r in REFINE_METHODS for s in SELECT_METHODS
+        (r, s): [] for r in REFINE_METHODS for s in select_methods
     }
     failures = []
     t_start = time.time()
@@ -229,7 +237,7 @@ def main() -> None:
                     # Derive pocket_center + ref_pos from crystal mol, dock with re-embedded mol.
                     # SMILES-sourced mol may differ in atom ordering or protonation;
                     # use strict → charge-stripped → MCS matching.
-                    _, lig_ref, meta_ref = preprocess_complex(pocket_pdb, mol_ref)
+                    _, lig_ref, meta_ref = preprocess_complex(pocket_pdb, mol_ref, pocket_cutoff=args.pocket_cutoff)
                     pocket_center = meta_ref["pocket_center"]
                     dock_idx, ref_idx, match_how = match_atoms(mol_ref, mol)
                     if not dock_idx:
@@ -237,9 +245,9 @@ def main() -> None:
                         failures.append({"pdb_id": pdb_id, "error": "atom match failed"})
                         continue
                     ref_pos = lig_ref["atom_coords"][ref_idx] - pocket_center
-                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, pocket_center=pocket_center)
+                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, pocket_center=pocket_center, pocket_cutoff=args.pocket_cutoff)
                 else:
-                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol)
+                    graph, lig_data, meta = preprocess_complex(pocket_pdb, mol, pocket_cutoff=args.pocket_cutoff)
                     pocket_center = meta["pocket_center"]
                     ref_pos = lig_data["atom_coords"] - pocket_center
                     dock_idx = list(range(int(meta["num_atom"])))
@@ -288,6 +296,20 @@ def main() -> None:
                     "match_how": match_how,
                 }, poses_file)
 
+            # --- Confidence-based selection (run once on raw flow output) ---
+            sorted_idx_conf: list[int] = []
+            if args.confidence_ckpt:
+                if resumed:
+                    # Rebuild graph/lig_data/meta — saved poses.pt only has the minimum needed for RMSD.
+                    graph, lig_data, meta = preprocess_complex(
+                        pocket_pdb, mol, pocket_center=pocket_center,
+                        pocket_cutoff=args.pocket_cutoff,
+                    )
+                from src.inference.confidence_features import score_poses_with_confidence
+                _, sorted_idx_conf = score_poses_with_confidence(
+                    model, args.confidence_ckpt, graph, lig_data, meta, raw_poses, device,
+                )
+
             # --- Apply each refinement, then each selection ---
             # Use symmetry-aware RDKit RMSD when topology matches; otherwise
             # fall back to subset tensor RMSD (for partial MCS).
@@ -312,9 +334,13 @@ def main() -> None:
                 except Exception:
                     pass
 
-                for select in SELECT_METHODS:
+                for select in select_methods:
                     if select == "vina":
                         sel_idx = vina_best_idx
+                    elif select == "confidence":
+                        if not sorted_idx_conf:
+                            continue
+                        sel_idx = sorted_idx_conf[0]
                     else:
                         sel_idx = select_pose(select, rmsds)
                     entry = {
@@ -357,7 +383,7 @@ def main() -> None:
 
     all_stats = {}
     for refine in REFINE_METHODS:
-        for select in SELECT_METHODS:
+        for select in select_methods:
             results = combo_results[(refine, select)]
             if not results:
                 continue
@@ -384,7 +410,7 @@ def main() -> None:
         "stats": all_stats,
         "per_complex": {
             f"{r}+{s}": combo_results[(r, s)]
-            for r in REFINE_METHODS for s in SELECT_METHODS
+            for r in REFINE_METHODS for s in select_methods
         },
     }
 
