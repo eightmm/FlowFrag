@@ -149,6 +149,17 @@ class UnifiedDataset(Dataset):
         pocket_cutoff_range: tuple[float, float] | None = None,
         prior_sigma_range: tuple[float, float] | None = None,
         prior_sigma_log_uniform: bool = True,
+        # Time sampling distribution. v4 default = "simplefold":
+        #   p(t) = 0.02·U(0,1) + 0.98·LN(m=0.8, s=1.7)
+        # Shifted logit-normal peaked near t≈0.69 (late refinement focus)
+        # with a 2 % uniform floor so both endpoints stay above zero —
+        # matches what SimpleFold and AF3-style structure models use, and
+        # aligns naturally with our late-biased ODE inference schedule.
+        # Other options:
+        #   "uniform"      — Lipman et al. 2023 baseline (flat)
+        #   "logit_normal" — SD3 / v3 default (peaked at t≈0.5)
+        #   "mixture"      — 70 % logit-normal + 10 % U[0.02,0.20] + 20 % U[0.75,0.98]
+        time_distribution: str = "simplefold",
     ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -165,6 +176,13 @@ class UnifiedDataset(Dataset):
             tuple(prior_sigma_range) if prior_sigma_range is not None else None
         )
         self.prior_sigma_log_uniform = prior_sigma_log_uniform
+        td = (time_distribution or "simplefold").lower()
+        if td not in ("uniform", "logit_normal", "mixture", "simplefold"):
+            raise ValueError(
+                f"time_distribution must be 'uniform', 'logit_normal', "
+                f"'mixture' or 'simplefold', got {time_distribution!r}"
+            )
+        self.time_distribution = td
         self.seed = seed
         self.receptor_aug_prob = receptor_aug_prob
         self.alt_receptor_root: Path | None = (
@@ -322,11 +340,38 @@ class UnifiedDataset(Dataset):
         prior_gen = self._make_generator(idx, stream_offset=2)
         time_gen = self._make_generator(idx, stream_offset=3)
 
-        # Logit-normal time sampling (SD3 / FlowDock): t = sigmoid(N(0, 1)).
-        # Concentrates training on t ≈ 0.5 where flow matching is hardest.
+        # Time sampling — dispatch on self.time_distribution.
+        #
+        # "simplefold" (v4 default) — p(t) = 0.02·U + 0.98·LN(m=0.8, s=1.7).
+        #   Shifted logit-normal peaked near t≈0.69 with a 2 % uniform
+        #   floor: emphasizes late refinement (matches inference late
+        #   schedule) while keeping endpoints non-zero. Source: SimpleFold
+        #   protein-folding paper.
+        # "logit_normal" — t = sigmoid(N(0, 1)); SD3 / v3 default.
+        # "mixture"      — 70 % logit-normal + 10 % U[0.02,0.20] + 20 % U[0.75,0.98].
+        # "uniform"      — t ~ U(0, 1); Lipman et al. 2023 baseline.
         import math
-        z = torch.randn(1, generator=time_gen, dtype=T_1.dtype).item()
-        t = 1.0 / (1.0 + math.exp(-z))
+        if self.time_distribution == "logit_normal":
+            z = torch.randn(1, generator=time_gen, dtype=T_1.dtype).item()
+            t = 1.0 / (1.0 + math.exp(-z))
+        elif self.time_distribution == "mixture":
+            r = torch.rand(1, generator=time_gen).item()
+            if r < 0.7:
+                z = torch.randn(1, generator=time_gen, dtype=T_1.dtype).item()
+                t = 1.0 / (1.0 + math.exp(-z))
+            elif r < 0.8:
+                t = 0.02 + torch.rand(1, generator=time_gen).item() * (0.20 - 0.02)
+            else:
+                t = 0.75 + torch.rand(1, generator=time_gen).item() * (0.98 - 0.75)
+        elif self.time_distribution == "simplefold":
+            r = torch.rand(1, generator=time_gen).item()
+            if r < 0.02:
+                t = torch.rand(1, generator=time_gen).item()
+            else:
+                z = torch.randn(1, generator=time_gen, dtype=T_1.dtype).item()
+                t = 1.0 / (1.0 + math.exp(-(0.8 + 1.7 * z)))
+        else:  # "uniform"
+            t = torch.rand(1, generator=time_gen).item()
 
         # Per-sample translation prior σ. Range-based sampling lets the model
         # see priors of varying width — at inference we then have one
@@ -391,6 +436,9 @@ class UnifiedDataset(Dataset):
         out["T_target"] = T_1
         out["q_target"] = q_1
         out["t"] = torch.tensor([t], dtype=T_1.dtype)
+        # Prior σ used for this sample's T_0 noise. Made available so the
+        # model can condition on log(σ) (multi-σ training).
+        out["prior_sigma"] = torch.tensor([trans_sigma], dtype=T_1.dtype)
         out["pdb_id"] = pdb_id
 
         # Atom-level velocity target: v_atom = v_frag + omega × r
@@ -422,7 +470,7 @@ def unified_collate(batch: list[dict[str, Tensor]]) -> dict[str, Tensor]:
     frag_keys = ["T_frag", "q_frag", "v_target", "omega_target", "frag_sizes",
                  "T_target", "q_target"]
     atom_keys = ["atom_pos_t", "v_atom_target", "local_pos", "frag_id_for_atoms"]
-    scalar_keys = ["t"]
+    scalar_keys = ["t", "prior_sigma"]
     count_keys = [k for k in keys if k.startswith("num_")]
     slice_keys = [k for k in keys if k.endswith("_slice")]
 

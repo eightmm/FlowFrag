@@ -440,6 +440,20 @@ class UnifiedFlowFrag(nn.Module):
             nn.SiLU(),
             nn.Linear(t_emb_dim, t_emb_dim),
         )
+        # Conditional prior-σ embedding (schema_v2). Multi-σ training trains
+        # an *unconditional* mixture vector field by default; feeding log(σ)
+        # to the same time-conditioning path lets the model learn distinct
+        # behaviour per σ instead of averaging across [σ_min, σ_max]. The
+        # final Linear is zero-initialised so the contribution is exactly
+        # zero at init — older checkpoints without σ in the batch keep
+        # working unchanged, and the path activates as it trains.
+        self.sigma_emb_mlp = nn.Sequential(
+            nn.Linear(32, t_emb_dim),
+            nn.SiLU(),
+            nn.Linear(t_emb_dim, t_emb_dim),
+        )
+        nn.init.zeros_(self.sigma_emb_mlp[-1].weight)
+        nn.init.zeros_(self.sigma_emb_mlp[-1].bias)
 
         # Fragment-specific: size embedding
         self.frag_size_emb = nn.Embedding(max_frag_size + 1, 16)
@@ -544,6 +558,14 @@ class UnifiedFlowFrag(nn.Module):
         t_per_sample = batch["t"].view(-1)
         t_sin = sinusoidal_embedding(t_per_sample, dim=32)
         t_emb = self.t_emb_mlp(t_sin)
+        # Add log(prior σ) conditioning when σ is supplied in the batch.
+        # Zero-init σ MLP means this contribution starts at 0 and the model
+        # warm-starts identical to the non-conditional version. When σ is
+        # absent (older preprocess / inference without σ), we silently skip.
+        if "prior_sigma" in batch and batch["prior_sigma"] is not None:
+            log_sigma = torch.log(batch["prior_sigma"].clamp(min=0.1)).view(-1, 1)
+            sigma_sin = sinusoidal_embedding(log_sigma, dim=32)
+            t_emb = t_emb + self.sigma_emb_mlp(sigma_sin)
         node_batch_idx = batch["batch"]
         t_emb_nodes = t_emb[node_batch_idx]
 

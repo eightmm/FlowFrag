@@ -228,6 +228,7 @@ class Trainer:
             prior_sigma_range=tuple(dcfg["prior_sigma_range"])
                 if dcfg.get("prior_sigma_range") else None,
             prior_sigma_log_uniform=dcfg.get("prior_sigma_log_uniform", True),
+            time_distribution=dcfg.get("time_distribution", "uniform"),
         )
 
         split_file = dcfg.get("split_file")

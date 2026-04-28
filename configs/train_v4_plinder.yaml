@@ -41,6 +41,18 @@ data:
   prior_sigma_range: [2.0, 6.0]
   prior_sigma_log_uniform: true
 
+  # Time-sampling distribution. v4 default = "simplefold":
+  #   p(t) = 0.02 * U(0, 1) + 0.98 * LN(m=0.8, s=1.7)
+  # Shifted logit-normal peaked near t≈0.69 (late refinement focus) with a
+  # 2 % uniform floor so both endpoints stay non-zero. Matches SimpleFold /
+  # AF3-style structure models and aligns naturally with our late-biased
+  # ODE inference schedule (rollout_time_schedule: late, power=3).
+  # Other options:
+  #   uniform      — Lipman 2023 baseline, flat density
+  #   logit_normal — SD3 / v3 default (peaked at t≈0.5)
+  #   mixture      — 70 % LN(0,1) + 10 % U[0.02,0.20] + 20 % U[0.75,0.98]
+  time_distribution: simplefold
+
   rotation_augmentation: ligand_uniform
   deterministic: false
   num_workers: 8

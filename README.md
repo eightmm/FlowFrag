@@ -18,8 +18,11 @@ prior pose to the docked pose.
 - **SE(3)-equivariant GNN** — tensor product message passing over a
   heterogeneous protein-ligand graph with irreps up to l=2, accelerated by
   [cuEquivariance](https://docs.nvidia.com/cuda/cuequivariance/) CUDA kernels.
-- **Flow matching on SE(3)** — linear interpolation for translation, SLERP for
-  rotation, logit-normal time sampling. Single-step training objective
+- **Flow matching on SE(3)** — linear interpolation for translation, SLERP
+  for rotation, **SimpleFold-style time sampling** (`p(t) = 0.02·U + 0.98·LN(0.8, 1.7)`,
+  shifted toward late refinement). Multi-σ training (log-Uniform[2, 6] Å)
+  with `log(σ)` fed to the model as conditional input so a single network
+  handles a range of inference priors. Single-step training objective
   (v, ω regression); ODE-based multi-step inference.
 - **Confidence head for pose selection** — attention-pool ranker
   (`weights/confidence_v1.pt`) trained on per-pose features (pose RMSD
@@ -277,11 +280,13 @@ Prior / augmentation choices:
 
 | Parameter | Value | Rationale |
 |---|---|---|
-| `prior_sigma` | 3.0 Å | Empirically matches the per-axis std of T₁ (= 3.39 Å, measured across 90,489 fragments) — see `scripts/analyze_target_distribution.py` |
-| `rotation_augmentation` | `ligand_uniform` | Single Uniform(SO(3)) rotation applied per ligand per training sample |
+| `prior_sigma` | 3.0 Å (single-value fallback) | Empirically matches the per-axis std of T₁ (= 3.39 Å) |
+| `prior_sigma_range` | `[2.0, 6.0]` (log-uniform) | **v4**: per-sample σ; geometric mean √12 ≈ 3.46 ≈ T₁ std. `log(σ)` fed to the model so one network handles a range of inference priors |
+| `rotation_augmentation` | `ligand_uniform` | Single Uniform(SO(3)) rotation per ligand per sample |
 | `pocket_jitter_sigma` | 2.0 Å | Simulates inference-time pocket-centre uncertainty |
-| `pocket_cutoff_noise` | 2.0 Å | Uniform noise on pocket cutoff around the base 8 Å |
-| Time sampling | logit-normal (t = σ(𝒩(0,1))) | Concentrates training on t ≈ 0.5 where flow matching is hardest |
+| `pocket_cutoff_range` | `[6.0, 12.0]` (uniform) | **v4**: covers tight inhibitors (6 Å) → cofactor-class sites (10-12 Å). `pocket_cutoff_noise` retained as fallback |
+| `receptor_aug_prob` | 0.3 | **v4**: 30% chance to swap holo with apo / AF2-pred receptor (28 k of 130 k systems mapped) |
+| Time sampling | **`simplefold`**: 0.02·U(0,1) + 0.98·LN(m=0.8, s=1.7) | **v4**: shifted logit-normal peaked at t ≈ 0.69 with a 2 % uniform floor — emphasises late refinement, aligns with the late-biased ODE inference schedule, both endpoints stay non-zero. Other options: `uniform` (Lipman 2023), `logit_normal` (SD3 / v3), `mixture` |
 
 ### Evaluate a checkpoint
 
