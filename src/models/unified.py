@@ -356,16 +356,18 @@ class UnifiedInteractionLayer(nn.Module):
         # Fragment topological hop: -1 → 0 (N/A), 1..N → clamp to 16
         e_hop = self.frag_hop_emb((edge_frag_hop + 1).clamp(0, 16).long())  # [E, 8]
 
-        # Local-frame projection: R_src^T @ Δx gives 3 SO(3)-invariant scalars
-        # describing neighbor displacement in the source fragment's body frame.
-        # t-gated: fades from 0 at t=0 (random R → noise) to full at t=1 (crystal R → informative).
-        if R_frag is not None and node_frag_id is not None and t_raw_nodes is not None:
+        # Local-frame projection: R_src^T @ Δx gives 3 SO(3)-invariant
+        # scalars describing the neighbor displacement in the source
+        # fragment's body frame. We mask non-fragment edges (where R_src
+        # would be ill-defined) but no longer apply a separate t-gate —
+        # EquivariantAdaLN already provides time-conditioned scaling on
+        # all features, so the previous ``× t`` linear gate was redundant.
+        if R_frag is not None and node_frag_id is not None:
             src_frag_id = node_frag_id[src]                          # [E]
             has_frag = (src_frag_id >= 0).float().unsqueeze(-1)      # [E, 1]
             R_src = R_frag[src_frag_id.clamp(min=0)]                 # [E, 3, 3]
             local_disp = torch.einsum("eji,ej->ei", R_src, diff)    # R^T @ diff: [E, 3]
-            t_gate = t_raw_nodes[src].unsqueeze(-1)                  # [E, 1]
-            local_disp = local_disp * t_gate * has_frag
+            local_disp = local_disp * has_frag
         else:
             local_disp = torch.zeros(src.shape[0], 3, device=h.device, dtype=h.dtype)
         e_local_frame = self.local_frame_proj(local_disp)            # [E, 16]
@@ -419,7 +421,7 @@ class UnifiedFlowFrag(nn.Module):
         n_rbf: int = 16,
         t_emb_dim: int = 128,
         sh_lmax: int = 2,
-        max_frag_size: int = 30,
+        max_frag_size: int = 50,
         dropout: float = 0.0,
         contact_cutoff: float = 0.0,
     ) -> None:
@@ -469,13 +471,17 @@ class UnifiedFlowFrag(nn.Module):
             nn.Tanh(),
         )
 
-        # R_frag injection: mix 3 R_t columns (1o vectors) into vec_dim channels,
-        # gated by t_emb so the model learns when to trust orientation info.
+        # R_frag injection: mix 3 R_t columns (1o vectors) into vec_dim
+        # channels via a scalar linear combination (preserves equivariance).
+        # The earlier `R_frag_gate` (per-channel t-conditional Tanh) was
+        # removed — EquivariantAdaLN inside every interaction layer already
+        # provides t-conditional scaling on all features, so an additional
+        # init-time gate is redundant. The mix weight is zero-initialised
+        # so the contribution starts at exactly 0 and warms up only through
+        # gradient updates (preserves backward compatibility with older
+        # checkpoints that did not see this path).
         self.R_frag_mix = nn.Linear(3, hidden_vec_dim, bias=False)
-        self.R_frag_gate = nn.Sequential(
-            nn.Linear(t_emb_dim, hidden_vec_dim),
-            nn.Tanh(),
-        )
+        nn.init.zeros_(self.R_frag_mix.weight)
 
         # Interaction layers
         self.layers = nn.ModuleList([
@@ -576,7 +582,13 @@ class UnifiedFlowFrag(nn.Module):
         h_scalar = self.node_emb(batch)
 
         # Fragment-specific init: add size + time
-        size_feat = self.frag_size_emb(frag_sizes.clamp(max=30).long())
+        # Clamp guards against fragments larger than the embedding table.
+        # max_frag_size grew from 30 → 50 in v4 (PLINDER allows larger
+        # rigid fragments — single aromatic / fused-ring / steroid bases
+        # commonly exceed 30 atoms).
+        size_feat = self.frag_size_emb(
+            frag_sizes.clamp(max=self.frag_size_emb.num_embeddings - 1).long()
+        )
         h_frag_init = self.frag_init_mlp(
             torch.cat([h_scalar[frag_idx], size_feat, t_emb_frags], dim=-1)
         )
@@ -594,14 +606,15 @@ class UnifiedFlowFrag(nn.Module):
         h_1o = (gate.unsqueeze(-1) * r.unsqueeze(1)).reshape(n_nodes, vec_dim * 3)
 
         # R_frag injection: mix R_t columns into fragment nodes' 1o channels.
-        # R_t columns are 1o vectors; scalar linear combination preserves equivariance.
+        # R_t columns are 1o vectors; scalar linear combination preserves
+        # equivariance. AdaLN inside the layers handles the time-dependent
+        # scaling of this contribution; no separate init-time gate needed.
         if "q_frag" in batch:
             R_t = quaternion_to_matrix(batch["q_frag"])  # [N_frag, 3, 3]
-            # einsum: R_t[:, :, k] = k-th column (1o), mix weight[c, k] → [N_frag, vec_dim, 3]
+            # einsum: R_t[:, :, k] = k-th column (1o), mix weight[c, k]
+            #   → [N_frag, vec_dim, 3]
             h_R = torch.einsum("nki,ck->nci", R_t, self.R_frag_mix.weight)
-            # Time-conditioned gate: learn when to trust R_frag (random at t≈0, precise at t≈1)
-            R_gate = self.R_frag_gate(t_emb_frags).unsqueeze(-1)  # [N_frag, vec_dim, 1]
-            h_R = (h_R * R_gate).reshape(-1, vec_dim * 3)
+            h_R = h_R.reshape(-1, vec_dim * 3)
             h_1o = h_1o.clone()
             h_1o[frag_idx] = h_1o[frag_idx] + h_R
 

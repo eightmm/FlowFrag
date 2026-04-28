@@ -125,11 +125,10 @@ def build_static_complex_graph(
     node_charge = _ligand_pad_int8("atom_charge", 0)
     node_aromatic = _ligand_pad_bool("atom_aromatic")
     node_hybridization = _ligand_pad_int8("atom_hybridization", OTHER_HYBRID_IDX)
-    node_degree = _ligand_pad_int8("atom_degree", 0)
-    node_implicit_valence = _ligand_pad_int8("atom_implicit_valence", 0)
-    node_explicit_valence = _ligand_pad_int8("atom_explicit_valence", 0)
     node_num_rings = _ligand_pad_int8("atom_num_rings", 0)
-    node_chirality = _ligand_pad_int8("atom_chirality", 0)
+    # NOTE: atom_degree / implicit_valence / explicit_valence / chirality
+    # were emitted previously but never consumed by the model — removed
+    # from the graph dict to keep the schema lean.
     node_is_donor = _ligand_pad_bool("atom_is_donor")
     node_is_acceptor = _ligand_pad_bool("atom_is_acceptor")
     node_is_positive = _ligand_pad_bool("atom_is_positive")
@@ -145,14 +144,8 @@ def build_static_complex_graph(
             torch.full((n_pres,), UNK_ATOM_TOKEN, dtype=torch.int64),
         ]
     )
-    node_patom_is_metal = torch.cat(
-        [
-            torch.zeros(n_lig_atom, dtype=torch.bool),
-            torch.zeros(n_frag, dtype=torch.bool),
-            patom_data["patom_is_metal"],
-            torch.zeros(n_pres, dtype=torch.bool),
-        ]
-    )
+    # NOTE: patom_is_metal removed — patom_token already embeds metal
+    # element identity via its (residue=METAL, element) lookup.
 
     # schema_v2 protein pharmacophore (donor / acceptor / +/-/ hydrophobic).
     # Mirrors the ligand-side flags so the model can pick complementary pairs
@@ -181,14 +174,9 @@ def build_static_complex_graph(
             patom_data["pres_residue_type"],
         ]
     )
-    node_pres_is_pseudo = torch.cat(
-        [
-            torch.zeros(n_lig_atom, dtype=torch.bool),
-            torch.zeros(n_frag, dtype=torch.bool),
-            torch.zeros(n_prot_atom, dtype=torch.bool),
-            patom_data["pres_is_pseudo"],
-        ]
-    )
+    # NOTE: pres_is_pseudo + residue_id removed from the graph dict —
+    # neither was consumed by the model. Glycine pseudo-CB handling lives
+    # in protein.py (where pres_coords is computed).
 
     # --- Shared structural fields --------------------------------------------
     node_fragment_id = torch.cat(
@@ -199,15 +187,6 @@ def build_static_complex_graph(
             torch.full((n_pres,), -1, dtype=torch.int64),
         ]
     )
-    node_residue_id = torch.cat(
-        [
-            torch.full((n_lig_atom,), -1, dtype=torch.int64),
-            torch.full((n_frag,), -1, dtype=torch.int64),
-            patom_data["patom_residue_id"],
-            pres_residue_id,
-        ]
-    )
-
     # --- Edge assembly -------------------------------------------------------
     # Precompute fragment hop distances for frag_frag edge features
     frag_hop_mat = _frag_hop_distances(n_frag, lig_data["fragment_adj_index"])
@@ -366,11 +345,7 @@ def build_static_complex_graph(
         "node_charge": node_charge,
         "node_aromatic": node_aromatic,
         "node_hybridization": node_hybridization,
-        "node_degree": node_degree,
-        "node_implicit_valence": node_implicit_valence,
-        "node_explicit_valence": node_explicit_valence,
         "node_num_rings": node_num_rings,
-        "node_chirality": node_chirality,
         "node_is_donor": node_is_donor,
         "node_is_acceptor": node_is_acceptor,
         "node_is_positive": node_is_positive,
@@ -378,7 +353,6 @@ def build_static_complex_graph(
         "node_is_hydrophobe": node_is_hydrophobe,
         # Protein atom token features
         "node_patom_token": node_patom_token,
-        "node_patom_is_metal": node_patom_is_metal,
         # schema_v2 protein-atom pharmacophore (mirrors ligand-side bools)
         "node_patom_is_donor": node_patom_is_donor,
         "node_patom_is_acceptor": node_patom_is_acceptor,
@@ -387,10 +361,8 @@ def build_static_complex_graph(
         "node_patom_is_hydrophobic": node_patom_is_hydrophobic,
         # Protein residue virtual-node features
         "node_pres_residue_type": node_pres_residue_type,
-        "node_pres_is_pseudo": node_pres_is_pseudo,
         # Shared structural
         "node_fragment_id": node_fragment_id,
-        "node_residue_id": node_residue_id,
         # Edges
         "edge_index": torch.tensor([edge_src, edge_dst], dtype=torch.int64),
         "edge_type": torch.tensor(edge_type, dtype=torch.int8),
