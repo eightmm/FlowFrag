@@ -34,7 +34,6 @@ dependencies = [
     "openmm>=8.5.1",
     "plinder>=0.2.26",
     "biopython>=1.87",
-    "plmol",
 ]
 
 [project.optional-dependencies]
@@ -65,7 +64,6 @@ explicit = true
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
 torchaudio = { index = "pytorch" }
-plmol = { git = "https://github.com/eightmm/plmol" }
 
 [tool.uv.extra-build-dependencies]
 torch-cluster = ["torch"]
