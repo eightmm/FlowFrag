@@ -3,7 +3,7 @@
 ## Setup
 
 - **Input**: **SMILES only** — 3D starting conformers are re-embedded per complex via RDKit ETKDGv3 + MMFF94s. Crystal ligand coordinates are used only for the pocket-center reference and as the RMSD ground truth.
-- **SMILES source**: RCSB Chemical Component Dictionary fetched per-PDB by `scripts/fetch_astex_smiles.py` and `scripts/fetch_pb_smiles.py`; cached in `data/astex_smiles.json` and `data/pb_smiles.json`.
+- **SMILES source**: RCSB Chemical Component Dictionary fetched per-PDB by `scripts/fetch_smiles.py`; cached in `data/external_test/astex_smiles.json` and `data/external_test/pb_smiles.json`.
 - **ODE**: 10 steps, late schedule (power = 3.0).
 - **Prior**: translation &sigma; = 3.0 &Aring; centered at pocket, rotation uniform on SO(3).
 - **Pocket center**: centroid of protein residue virtual nodes within 8 &Aring; of the crystal ligand (matches the training definition). Derived from the full `{id}_protein.pdb` — a few Astex pocket files ship truncated (e.g. 1q1g with 21 heavy atoms, 1u1c empty) and would otherwise place the pocket center &ge;9 &Aring; off the true site.

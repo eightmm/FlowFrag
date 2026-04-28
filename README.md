@@ -366,11 +366,11 @@ flowfrag/
 │   ├── rollout.py                       # val rollout (single or multi-prior oracle top-1)
 │   ├── dock.py                          # dock a single complex
 │   ├── eval_benchmark.py                # PoseBusters / Astex benchmark eval
-│   ├── fetch_astex_smiles.py            # fetch canonical SMILES for Astex from RCSB
-│   ├── fetch_pb_smiles.py                # fetch canonical SMILES for PoseBusters from RCSB
+│   ├── fetch_smiles.py                   # fetch canonical SMILES caches from RCSB
 │   ├── viz_traj.py                       # render ODE trajectory as annotated GIF
 │   └── analyze_target_distribution.py   # T_1 distribution → prior_sigma tuning
 ├── configs/             # train_v3_b200.yaml (training config used to produce `best.pt`)
+├── data/external_test/  # Astex / PoseBusters benchmark metadata caches
 ├── data/splits/         # deterministic train/val splits (PDBbind 2020 → CASF-2016 core)
 ├── tests/               # unit tests (geometry, losses, equivariance, preprocess)
 └── docs/                # architecture & dataset reference
