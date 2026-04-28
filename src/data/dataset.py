@@ -82,7 +82,7 @@ def crop_to_pocket(
     # Virtual-node filter (anchor atom must be kept)
     pres_mask = atom_mask[prot_data["pres_atom_index"]]
 
-    return {
+    out = {
         "patom_coords": patom_coords[atom_mask],
         "patom_token": prot_data["patom_token"][atom_mask],
         "patom_residue_id": new_residue_id,
@@ -94,6 +94,13 @@ def crop_to_pocket(
         "pres_atom_index": remap[prot_data["pres_atom_index"][pres_mask]],
         "pres_is_pseudo": prot_data["pres_is_pseudo"][pres_mask],
     }
+    # schema_v2 per-atom pharmacophore (donor/acceptor/+/-/hydrophobic).
+    # Pass through cropping when present in the source protein.pt.
+    for k in ("patom_is_donor", "patom_is_acceptor", "patom_is_positive",
+              "patom_is_negative", "patom_is_hydrophobic"):
+        if k in prot_data:
+            out[k] = prot_data[k][atom_mask]
+    return out
 
 
 class UnifiedDataset(Dataset):
@@ -233,12 +240,22 @@ class UnifiedDataset(Dataset):
         # --- Crop protein to pocket & build graph -------------------------
         # Always use pocket_center (protein residue centroid) as reference,
         # never ligand coords — matches inference where ligand position is unknown.
+        # Both jitter and cutoff noise honor `deterministic` mode via
+        # _make_generator so that val/debug runs are bit-identical.
         ref_center = pocket_center.clone()
         cutoff = self.pocket_cutoff
         if self.pocket_jitter_sigma > 0:
-            ref_center = ref_center + torch.randn(3) * self.pocket_jitter_sigma
+            jitter_gen = self._make_generator(idx, stream_offset=5)
+            ref_center = ref_center + torch.randn(
+                3, generator=jitter_gen, dtype=ref_center.dtype
+            ) * self.pocket_jitter_sigma
         if self.pocket_cutoff_noise > 0:
-            cutoff = cutoff + (torch.rand(1).item() * 2 - 0.5) * self.pocket_cutoff_noise * 2
+            cutoff_gen = self._make_generator(idx, stream_offset=6)
+            # Symmetric Uniform[-noise, +noise] around the configured cutoff
+            # (e.g. cutoff=8, noise=2 → 6..10 Å). The previous formula was
+            # asymmetric (-0.5..1.5) and produced 6..14 Å.
+            u = torch.rand(1, generator=cutoff_gen).item()
+            cutoff = cutoff + (u * 2.0 - 1.0) * self.pocket_cutoff_noise
             cutoff = max(cutoff, 4.0)
         cropped_prot = crop_to_pocket(prot_data, ref_center, cutoff=cutoff)
         if cropped_prot is None:

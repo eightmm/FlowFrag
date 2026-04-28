@@ -166,9 +166,17 @@ class UnifiedNodeEmbedding(nn.Module):
         self.type_emb = nn.Embedding(NUM_NODE_TYPES, 16)          # 16
         self.res_type_emb = nn.Embedding(NUM_RES_TYPES, 16)       # 16
 
-        # Total: 88 + 32 + 16 + 16 = 152
+        # Protein-atom pharmacophore (schema_v2). Mirrors ligand bool_proj —
+        # zero for non-protein nodes (lig_atom / frag / pres). Initialized
+        # near zero so old checkpoints can warm-start without disturbing
+        # the existing patom token embedding.
+        self.patom_bool_proj = nn.Linear(5, 16)
+        nn.init.zeros_(self.patom_bool_proj.weight)
+        nn.init.zeros_(self.patom_bool_proj.bias)
+
+        # Total: 88 + 32 + 16 + 16 + 16 = 168
         self.proj = nn.Sequential(
-            nn.Linear(152, hidden_dim),
+            nn.Linear(168, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
@@ -193,9 +201,26 @@ class UnifiedNodeEmbedding(nn.Module):
         h_type = self.type_emb(graph["node_type"])
         h_res = self.res_type_emb(graph["node_pres_residue_type"].clamp(max=NUM_RES_TYPES - 1))
 
+        # Protein-atom pharmacophore (schema_v2). Falls back to all-zero when
+        # an older protein.pt without these fields is loaded — keeps backward
+        # compatibility with PDBbind-era checkpoints.
+        if "node_patom_is_donor" in graph:
+            patom_bools = torch.stack([
+                graph["node_patom_is_donor"].float(),
+                graph["node_patom_is_acceptor"].float(),
+                graph["node_patom_is_positive"].float(),
+                graph["node_patom_is_negative"].float(),
+                graph["node_patom_is_hydrophobic"].float(),
+            ], dim=-1)
+        else:
+            patom_bools = torch.zeros(
+                h_elem.shape[0], 5, dtype=h_elem.dtype, device=h_elem.device,
+            )
+        h_patom_bool = self.patom_bool_proj(patom_bools)
+
         h = torch.cat([
             h_elem, h_charge, h_aromatic, h_hybrid, h_rings, h_bool,
-            h_patom, h_type, h_res,
+            h_patom, h_type, h_res, h_patom_bool,
         ], dim=-1)
         return self.proj(h)
 

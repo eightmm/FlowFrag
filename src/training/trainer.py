@@ -214,6 +214,11 @@ class Trainer:
             rotation_augmentation=dcfg.get("rotation_augmentation", "none"),
             deterministic=dcfg.get("deterministic", False),
             seed=tcfg.get("seed", 42),
+            # Receptor augmentation (apo / AF2-predicted alt receptor swap).
+            # Reads alt_receptor_root + alt_receptor_mapping JSON; train-only.
+            receptor_aug_prob=dcfg.get("receptor_aug_prob", 0.0),
+            alt_receptor_root=dcfg.get("alt_receptor_root"),
+            alt_receptor_mapping=dcfg.get("alt_receptor_mapping"),
         )
 
         split_file = dcfg.get("split_file")
@@ -224,6 +229,7 @@ class Trainer:
         val_kwargs["rotation_augmentation"] = "none"
         val_kwargs["pocket_jitter_sigma"] = 0.0
         val_kwargs["pocket_cutoff_noise"] = 0.0
+        val_kwargs["receptor_aug_prob"] = 0.0  # crystal-only val
 
         if split_file is not None:
             train_ds = DatasetClass(split_file=split_file, split_key="train", **ds_kwargs)

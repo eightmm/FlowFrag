@@ -19,6 +19,12 @@ from rdkit.Chem import AllChem, rdFMCS, rdMolAlign, rdmolops
 
 
 REFINE_METHODS = ("none", "mmff")
+
+# SELECT_METHODS is a *label registry* used to bucket reported metrics.
+# The selection logic does NOT all live in ``select_pose`` — only "oracle"
+# is purely RMSD-based. "vina" / "confidence" require their own scoring
+# pass before picking the best; callers must use ``select_by_score``
+# directly with the score array (e.g. Vina free energy, ‑confidence).
 SELECT_METHODS = ("oracle", "vina", "confidence")
 V2_IDS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "external_test" / "posebusters_v2_ids.txt"
 
@@ -281,10 +287,30 @@ def match_atoms(
 # ---------------------------------------------------------------------------
 # Selection + stats
 # ---------------------------------------------------------------------------
+def select_by_score(scores) -> int:
+    """Generic argmin over a score array (lower = better).
+
+    Use for any score-based selector — Vina free energy, predicted RMSD
+    from the confidence head, etc. Callers are responsible for sign-flipping
+    when a higher score means a better pose.
+    """
+    return int(np.argmin(scores))
+
+
 def select_pose(method: str, rmsds: list[float]) -> int:
+    """RMSD-based oracle selection only.
+
+    Vina and confidence selection require external score arrays (free
+    energy and predicted RMSD respectively); use ``select_by_score`` for
+    those instead of overloading this function.
+    """
     if method == "oracle":
-        return int(np.argmin(rmsds))
-    raise ValueError(f"Unknown selection method: {method}")
+        return select_by_score(rmsds)
+    raise ValueError(
+        f"select_pose(method='{method}') is not RMSD-based. "
+        f"Use select_by_score(score_array) with the appropriate score "
+        f"(Vina energy, -confidence, ...) instead."
+    )
 
 
 def compute_stats(rmsds: np.ndarray) -> dict:
@@ -305,5 +331,5 @@ __all__ = [
     "load_sdf_robust", "load_mol2_robust", "load_ligand",
     "mmff_refine", "apply_refinement",
     "compute_rmsd", "compute_centroid_dist", "compute_pose_rmsd",
-    "match_atoms", "select_pose", "compute_stats",
+    "match_atoms", "select_pose", "select_by_score", "compute_stats",
 ]

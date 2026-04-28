@@ -154,6 +154,24 @@ def build_static_complex_graph(
         ]
     )
 
+    # schema_v2 protein pharmacophore (donor / acceptor / +/-/ hydrophobic).
+    # Mirrors the ligand-side flags so the model can pick complementary pairs
+    # symmetrically. Zero-padded for non-protein-atom slots.
+    def _patom_pad_bool(key: str) -> torch.Tensor:
+        if key not in patom_data:
+            return torch.zeros(total_nodes, dtype=torch.bool)
+        return torch.cat([
+            torch.zeros(n_lig_atom, dtype=torch.bool),
+            torch.zeros(n_frag, dtype=torch.bool),
+            patom_data[key],
+            torch.zeros(n_pres, dtype=torch.bool),
+        ])
+    node_patom_is_donor = _patom_pad_bool("patom_is_donor")
+    node_patom_is_acceptor = _patom_pad_bool("patom_is_acceptor")
+    node_patom_is_positive = _patom_pad_bool("patom_is_positive")
+    node_patom_is_negative = _patom_pad_bool("patom_is_negative")
+    node_patom_is_hydrophobic = _patom_pad_bool("patom_is_hydrophobic")
+
     # --- Residue virtual node features (padded for non-virtual slots) --------
     node_pres_residue_type = torch.cat(
         [
@@ -361,6 +379,12 @@ def build_static_complex_graph(
         # Protein atom token features
         "node_patom_token": node_patom_token,
         "node_patom_is_metal": node_patom_is_metal,
+        # schema_v2 protein-atom pharmacophore (mirrors ligand-side bools)
+        "node_patom_is_donor": node_patom_is_donor,
+        "node_patom_is_acceptor": node_patom_is_acceptor,
+        "node_patom_is_positive": node_patom_is_positive,
+        "node_patom_is_negative": node_patom_is_negative,
+        "node_patom_is_hydrophobic": node_patom_is_hydrophobic,
         # Protein residue virtual-node features
         "node_pres_residue_type": node_pres_residue_type,
         "node_pres_is_pseudo": node_pres_is_pseudo,
