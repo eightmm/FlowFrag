@@ -36,7 +36,7 @@ from src.inference.io import (
     write_multi_sdf, write_sdf, write_traj_pdb, write_traj_sdf,
 )
 from src.inference.preprocess import load_ligand, preprocess_complex
-from src.inference.sampler import sample_unified
+from src.inference.sampler import sample_unified, sample_unified_multi_sigma, parse_sigma_list
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,12 @@ def main() -> None:
     parser.add_argument("--time_schedule", type=str, default="late",
                         choices=("uniform", "late", "early"))
     parser.add_argument("--schedule_power", type=float, default=3.0)
-    parser.add_argument("--sigma", type=float, default=None)
+    parser.add_argument("--sigma", type=float, default=None,
+                        help="Single prior σ. Ignored when --sigma_list is set.")
+    parser.add_argument("--sigma_list", type=str, default=None,
+                        help='Multi-σ inference. "2,3,4,5" splits --num_samples '
+                             'across 4 σ values; "2:10,3:10,4:20" explicit '
+                             'per-σ counts. Requires v4 σ-conditional model.')
     parser.add_argument("--num_samples", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed torch RNG before sampling (fixes the SE(3) prior).")
@@ -151,24 +156,44 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nGenerating {args.num_samples} pose(s), {args.num_steps} ODE steps, sigma={sigma}...")
     if args.seed is not None:
         torch.manual_seed(args.seed)
 
-    results = sample_unified(
-        model, graph, lig_data, meta,
-        num_samples=args.num_samples,
-        num_steps=args.num_steps,
-        translation_sigma=sigma,
-        time_schedule=args.time_schedule,
-        schedule_power=args.schedule_power,
-        device=device,
-        save_traj=args.save_traj,
-        phys_guidance=phys,
-        phys_lambda_max=args.phys_lambda_max,
-        phys_power=args.phys_power,
-        phys_start_t=args.phys_start_t,
-    )
+    sigma_list, sigma_counts = parse_sigma_list(args.sigma_list, args.num_samples)
+    if sigma_list:
+        print(f"\nGenerating {args.num_samples} pose(s) (multi-σ), "
+              f"{args.num_steps} ODE steps, "
+              f"σ schedule = {list(zip(sigma_list, sigma_counts))} ...")
+        results = sample_unified_multi_sigma(
+            model, graph, lig_data, meta,
+            sigma_list=sigma_list,
+            samples_per_sigma=sigma_counts,
+            num_steps=args.num_steps,
+            time_schedule=args.time_schedule,
+            schedule_power=args.schedule_power,
+            device=device,
+            save_traj=args.save_traj,
+            phys_guidance=phys,
+            phys_lambda_max=args.phys_lambda_max,
+            phys_power=args.phys_power,
+            phys_start_t=args.phys_start_t,
+        )
+    else:
+        print(f"\nGenerating {args.num_samples} pose(s), {args.num_steps} ODE steps, sigma={sigma}...")
+        results = sample_unified(
+            model, graph, lig_data, meta,
+            num_samples=args.num_samples,
+            num_steps=args.num_steps,
+            translation_sigma=sigma,
+            time_schedule=args.time_schedule,
+            schedule_power=args.schedule_power,
+            device=device,
+            save_traj=args.save_traj,
+            phys_guidance=phys,
+            phys_lambda_max=args.phys_lambda_max,
+            phys_power=args.phys_power,
+            phys_start_t=args.phys_start_t,
+        )
     all_poses = [r["atom_pos_pred"] for r in results]
     all_trajs = results if args.save_traj else []
     pc = meta["pocket_center"]

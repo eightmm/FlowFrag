@@ -47,7 +47,7 @@ from src.inference.evaluation import (
     load_ligand, match_atoms, select_pose,
 )
 from src.inference.preprocess import preprocess_complex
-from src.inference.sampler import sample_unified
+from src.inference.sampler import sample_unified, sample_unified_multi_sigma, parse_sigma_list
 from src.scoring.ranking import rank_poses
 
 
@@ -68,7 +68,12 @@ def main() -> None:
     parser.add_argument("--num_steps", type=int, default=25)
     parser.add_argument("--time_schedule", type=str, default="late")
     parser.add_argument("--schedule_power", type=float, default=3.0)
-    parser.add_argument("--sigma", type=float, default=None)
+    parser.add_argument("--sigma", type=float, default=None,
+                        help="Single prior σ. Ignored when --sigma_list is set.")
+    parser.add_argument("--sigma_list", type=str, default=None,
+                        help='Multi-σ inference: "2,3,4,5" splits --num_samples '
+                             'evenly across 4 σ values; "2:10,3:10,4:20" gives '
+                             'explicit per-σ counts. Requires σ-conditional v4 model.')
     parser.add_argument("--num_samples", type=int, default=40)
     parser.add_argument("--pocket_cutoff", type=float, default=8.0,
                         help="Residue-aware pocket cutoff (Å). Model trained at 8.0 with 6-10 noise.")
@@ -269,20 +274,39 @@ def main() -> None:
                     )
 
                 # --- Sample N poses (batched into one forward per ODE step) ---
-                results = sample_unified(
-                    model, graph, lig_data, meta,
-                    num_samples=args.num_samples,
-                    num_steps=args.num_steps,
-                    translation_sigma=sigma,
-                    time_schedule=args.time_schedule,
-                    schedule_power=args.schedule_power,
-                    device=device,
-                    phys_guidance=phys,
-                    phys_lambda_max=args.phys_lambda_max if args.phys_guidance else 0.0,
-                    phys_power=args.phys_power,
-                    phys_start_t=args.phys_start_t,
-                    stochastic_gamma=args.stochastic_gamma,
+                _sigma_list, _sigma_counts = parse_sigma_list(
+                    args.sigma_list, args.num_samples
                 )
+                if _sigma_list:
+                    results = sample_unified_multi_sigma(
+                        model, graph, lig_data, meta,
+                        sigma_list=_sigma_list,
+                        samples_per_sigma=_sigma_counts,
+                        num_steps=args.num_steps,
+                        time_schedule=args.time_schedule,
+                        schedule_power=args.schedule_power,
+                        device=device,
+                        phys_guidance=phys,
+                        phys_lambda_max=args.phys_lambda_max if args.phys_guidance else 0.0,
+                        phys_power=args.phys_power,
+                        phys_start_t=args.phys_start_t,
+                        stochastic_gamma=args.stochastic_gamma,
+                    )
+                else:
+                    results = sample_unified(
+                        model, graph, lig_data, meta,
+                        num_samples=args.num_samples,
+                        num_steps=args.num_steps,
+                        translation_sigma=sigma,
+                        time_schedule=args.time_schedule,
+                        schedule_power=args.schedule_power,
+                        device=device,
+                        phys_guidance=phys,
+                        phys_lambda_max=args.phys_lambda_max if args.phys_guidance else 0.0,
+                        phys_power=args.phys_power,
+                        phys_start_t=args.phys_start_t,
+                        stochastic_gamma=args.stochastic_gamma,
+                    )
                 raw_poses = [r["atom_pos_pred"] for r in results]
 
                 torch.save({

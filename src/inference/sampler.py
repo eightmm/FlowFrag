@@ -274,4 +274,113 @@ def sample_unified(
     return results
 
 
-__all__ = ["build_time_grid", "sample_unified", "build_batched_graph"]
+def sample_unified_multi_sigma(
+    model: torch.nn.Module,
+    graph: dict[str, Tensor],
+    lig_data: dict,
+    meta: dict,
+    *,
+    sigma_list: list[float],
+    samples_per_sigma: list[int] | int,
+    num_steps: int = 25,
+    time_schedule: str = "late",
+    schedule_power: float = 3.0,
+    device: torch.device = torch.device("cpu"),
+    save_traj: bool = False,
+    phys_guidance=None,
+    phys_lambda_max: float = 0.0,
+    phys_power: float = 2.0,
+    phys_start_t: float = 0.3,
+    stochastic_gamma: float = 0.0,
+) -> list[dict[str, Tensor]]:
+    """Run ``sample_unified`` once per σ in ``sigma_list`` and concatenate.
+
+    The trained model is σ-conditional (``log(σ)`` is fed into the time
+    embedding), so each prior σ produces a different vector field and a
+    distinct ODE trajectory. Mixing several σ values in a single inference
+    call gives the downstream confidence head a richer pose set to choose
+    from — small σ → tight refinement, large σ → wider exploration of the
+    pocket basin.
+
+    Args:
+        sigma_list: σ values to sample at, e.g. ``[2.0, 3.0, 4.0, 5.0]``.
+        samples_per_sigma: int (uniform) or list[int] of len(sigma_list).
+        Other args identical to :func:`sample_unified`.
+
+    Returns:
+        Flat list of length ``sum(samples_per_sigma)``. Each entry has the
+        same keys as ``sample_unified`` plus ``"sigma": float`` so callers
+        can inspect / weight by which prior produced the pose.
+    """
+    if not sigma_list:
+        raise ValueError("sigma_list must be non-empty")
+    if isinstance(samples_per_sigma, int):
+        per = [samples_per_sigma] * len(sigma_list)
+    else:
+        per = list(samples_per_sigma)
+    if len(per) != len(sigma_list):
+        raise ValueError(
+            f"samples_per_sigma length ({len(per)}) must match "
+            f"sigma_list length ({len(sigma_list)})"
+        )
+
+    out: list[dict[str, Tensor]] = []
+    for sigma, n in zip(sigma_list, per):
+        if n <= 0:
+            continue
+        chunk = sample_unified(
+            model, graph, lig_data, meta,
+            num_samples=n,
+            num_steps=num_steps,
+            translation_sigma=float(sigma),
+            time_schedule=time_schedule,
+            schedule_power=schedule_power,
+            device=device,
+            save_traj=save_traj,
+            phys_guidance=phys_guidance,
+            phys_lambda_max=phys_lambda_max,
+            phys_power=phys_power,
+            phys_start_t=phys_start_t,
+            stochastic_gamma=stochastic_gamma,
+        )
+        for r in chunk:
+            r["sigma"] = float(sigma)
+        out.extend(chunk)
+    return out
+
+
+def parse_sigma_list(spec: str | None, num_samples: int) -> tuple[list[float], list[int]]:
+    """Parse a CLI ``--sigma_list`` spec into (sigmas, per-sigma counts).
+
+    Accepts:
+        "2,3,4,5"          — split num_samples evenly across 4 σ values
+        "2:10,3:10,4:20"   — explicit per-σ counts (10 + 10 + 20 = 40)
+    Returns ([], []) if spec is None.
+    """
+    if not spec:
+        return [], []
+    sigmas: list[float] = []
+    counts: list[int] = []
+    has_explicit = ":" in spec
+    if has_explicit:
+        for part in spec.split(","):
+            s, n = part.split(":")
+            sigmas.append(float(s.strip()))
+            counts.append(int(n.strip()))
+    else:
+        sigmas = [float(s.strip()) for s in spec.split(",")]
+        # Distribute num_samples ≈ evenly (last bucket absorbs remainder).
+        base = num_samples // len(sigmas)
+        rem = num_samples - base * len(sigmas)
+        counts = [base] * len(sigmas)
+        counts[-1] += rem
+    return sigmas, counts
+
+
+__all__ = [
+    "build_time_grid",
+    "sample_unified",
+    "sample_unified_multi_sigma",
+    "parse_sigma_list",
+    "build_batched_graph",
+]

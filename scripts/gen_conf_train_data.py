@@ -36,24 +36,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.inference.confidence_features import extract_per_atom_features
 from src.inference.preprocess import build_inference_bundle, load_processed
-from src.inference.sampler import sample_unified
+from src.inference.sampler import sample_unified, sample_unified_multi_sigma, parse_sigma_list
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--processed_dir", default="data/processed")
-    ap.add_argument("--split_json", default="data/splits/pdbbind2020.json")
+    # v4 default points at PLINDER processed; override for legacy PDBbind.
+    ap.add_argument("--processed_dir", default="data/plinder_processed")
+    ap.add_argument("--split_json", default="data/splits/plinder_v4.json")
     ap.add_argument("--split_key", default="train",
                     help="Which split to iterate: 'train' or 'val'")
     ap.add_argument("--astex_smiles", default="data/external_test/astex_smiles.json")
     ap.add_argument("--config", required=True)
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--out_dir", default="data/conf_train",
+    ap.add_argument("--out_dir", default="data/conf_train_v4",
                     help="Output directory for shard_*.npz files")
-    ap.add_argument("--n_samples", type=int, default=20)
-    ap.add_argument("--n_steps", type=int, default=12)
-    ap.add_argument("--sigma", type=float, default=5.0)
-    ap.add_argument("--gamma", type=float, default=0.4)
+    ap.add_argument("--n_samples", type=int, default=20,
+                    help="Total poses per complex (split across sigma_list).")
+    ap.add_argument("--n_steps", type=int, default=10,
+                    help="ODE steps. Integration sweep shows 5-10 steps "
+                         "≈ 25 step quality, ~2.5x faster pose generation.")
+    ap.add_argument("--sigma", type=float, default=3.0,
+                    help="Single σ (used when --sigma_list is null).")
+    ap.add_argument("--sigma_list", type=str, default="2,3,4,5",
+                    help='Multi-σ pose generation. Default "2,3,4,5" matches '
+                         'the σ-conditional v4 model (5 poses per σ when '
+                         'n_samples=20). Set to empty string to use single σ.')
+    ap.add_argument("--gamma", type=float, default=0.0,
+                    help="Stochastic SDE noise. v4 default 0 (deterministic).")
     ap.add_argument("--shard_size", type=int, default=500, help="Complexes per shard")
     ap.add_argument("--shard_idx_start", type=int, default=0,
                     help="Starting shard index (use to resume without overwriting earlier shards)")
@@ -99,6 +109,7 @@ def main() -> None:
     buf_atom_pose_ptr: list[int] = [0]
     buf_pose_pid: list[str] = []
     buf_pose_rmsd: list[float] = []
+    buf_pose_sigma: list[float] = []
     buf_pose_n_atoms: list[int] = []
     buf_pose_n_frags: list[int] = []
     buf_pose_scalars: dict[str, list[float]] = {
@@ -110,8 +121,8 @@ def main() -> None:
 
     def flush_shard():
         nonlocal cur_complexes, shard_idx, buf_atom_scalar, buf_atom_norms, buf_atom_disp
-        nonlocal buf_atom_pose_ptr, buf_pose_pid, buf_pose_rmsd, buf_pose_n_atoms
-        nonlocal buf_pose_n_frags, buf_pose_scalars
+        nonlocal buf_atom_pose_ptr, buf_pose_pid, buf_pose_rmsd, buf_pose_sigma
+        nonlocal buf_pose_n_atoms, buf_pose_n_frags, buf_pose_scalars
         if not buf_pose_pid: return
         out_path = out_dir / f"shard_{shard_idx:04d}.npz"
         pack = {
@@ -121,6 +132,7 @@ def main() -> None:
             "atom_pose_ptr": np.asarray(buf_atom_pose_ptr, dtype=np.int64),
             "pose_pid": np.asarray(buf_pose_pid),
             "pose_rmsd": np.asarray(buf_pose_rmsd, dtype=np.float32),
+            "pose_sigma": np.asarray(buf_pose_sigma, dtype=np.float32),
             "pose_n_atoms": np.asarray(buf_pose_n_atoms, dtype=np.int32),
             "pose_n_frags": np.asarray(buf_pose_n_frags, dtype=np.int32),
         }
@@ -138,6 +150,7 @@ def main() -> None:
         buf_atom_pose_ptr = [0]
         buf_pose_pid = []
         buf_pose_rmsd = []
+        buf_pose_sigma = []
         buf_pose_n_atoms = []
         buf_pose_n_frags = []
         buf_pose_scalars = {k: [] for k in buf_pose_scalars}
@@ -159,13 +172,27 @@ def main() -> None:
         crystal_centered = lig["atom_coords"] - pocket_center
 
         try:
-            results = sample_unified(
-                model, graph, lig_data, inf_meta,
-                num_samples=args.n_samples, num_steps=args.n_steps,
-                translation_sigma=args.sigma, time_schedule="late",
-                schedule_power=3.0, device=device, stochastic_gamma=args.gamma,
-            )
+            sigma_list, sigma_counts = parse_sigma_list(args.sigma_list, args.n_samples)
+            if sigma_list:
+                results = sample_unified_multi_sigma(
+                    model, graph, lig_data, inf_meta,
+                    sigma_list=sigma_list,
+                    samples_per_sigma=sigma_counts,
+                    num_steps=args.n_steps,
+                    time_schedule="late", schedule_power=3.0,
+                    device=device, stochastic_gamma=args.gamma,
+                )
+            else:
+                results = sample_unified(
+                    model, graph, lig_data, inf_meta,
+                    num_samples=args.n_samples, num_steps=args.n_steps,
+                    translation_sigma=args.sigma, time_schedule="late",
+                    schedule_power=3.0, device=device, stochastic_gamma=args.gamma,
+                )
             raw_poses = [r["atom_pos_pred"].cpu() for r in results]
+            # Carry sigma per-pose so the confidence head can optionally
+            # condition on or weight by which prior produced the pose.
+            pose_sigmas = [float(r.get("sigma", args.sigma)) for r in results]
         except Exception as e:
             failures += 1
             if failures <= 5: print(f"  sample fail {pid}: {e}")
@@ -190,6 +217,9 @@ def main() -> None:
             buf_atom_pose_ptr.append(buf_atom_pose_ptr[-1] + n_atoms)
             buf_pose_pid.append(pid)
             buf_pose_rmsd.append(float(feats["pose_rmsd"][b]))
+            buf_pose_sigma.append(
+                float(pose_sigmas[b]) if b < len(pose_sigmas) else float(args.sigma)
+            )
             buf_pose_n_atoms.append(int(n_atoms))
             buf_pose_n_frags.append(int(feats["pose_n_frags"]))
             for k in buf_pose_scalars:
