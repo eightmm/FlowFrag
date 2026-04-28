@@ -38,8 +38,9 @@ POSE_STATS_KEYS = [
 # Data loading
 # ---------------------------------------------------------------------------
 def load_all_shards(shards_dir: Path) -> dict:
-    """Concatenate all ``shard_*.npz`` under ``shards_dir`` with rebased pointers."""
-    shards = sorted(shards_dir.glob("shard_*.npz"))
+    """Concatenate all ``*shard_*.npz`` (also matches prefixed names like
+    ``cfgX_shard_NNNN.npz``) under ``shards_dir`` with rebased pointers."""
+    shards = sorted(shards_dir.glob("*shard_*.npz"))
     assert shards, f"No shards in {shards_dir}"
     print(f"Loading {len(shards)} shards ...")
 
@@ -55,8 +56,10 @@ def load_all_shards(shards_dir: Path) -> dict:
 
     for sh in shards:
         d = np.load(sh)
-        parts["atom_scalar"].append(d["atom_scalar"])
-        parts["atom_norms"].append(d["atom_norms"])
+        # Cast heavy feature arrays to fp16 to halve CPU memory.
+        # Cast back to fp32 happens at GPU transfer time with no extra CPU copy.
+        parts["atom_scalar"].append(d["atom_scalar"].astype(np.float16))
+        parts["atom_norms"].append(d["atom_norms"].astype(np.float16))
         parts["atom_disp"].append(d["atom_disp"])
         parts["pose_pid"].append(d["pose_pid"])
         parts["pose_rmsd"].append(d["pose_rmsd"])
